@@ -296,11 +296,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create new reservation
   app.post("/api/reservations", async (req, res) => {
     try {
+      // Get reservation data from request body
       let reservationData = req.body;
       
       // If authenticated user, set userId
       if (req.isAuthenticated() && req.user) {
         reservationData.userId = req.user.id;
+      }
+      
+      // Convert string dates to Date objects
+      if (typeof reservationData.reservationDate === 'string') {
+        reservationData.reservationDate = new Date(reservationData.reservationDate);
+      }
+      
+      if (typeof reservationData.startTime === 'string') {
+        reservationData.startTime = new Date(reservationData.startTime);
+      }
+      
+      if (typeof reservationData.endTime === 'string') {
+        reservationData.endTime = new Date(reservationData.endTime);
       }
       
       // Validate data
