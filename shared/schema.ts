@@ -22,6 +22,7 @@ export const locations = pgTable("locations", {
   state: text("state"),
   zipCode: text("zip_code"),
   phoneNumber: text("phone_number"),
+  description: text("description"),
   isActive: boolean("is_active").default(true)
 });
 
@@ -33,6 +34,8 @@ export const rooms = pgTable("rooms", {
   capacity: integer("capacity").notNull(),
   description: text("description"),
   features: text("features").array(),
+  floor: integer("floor"),
+  roomNumber: text("room_number"),
   isActive: boolean("is_active").default(true),
   createdAt: timestamp("created_at").defaultNow()
 });
@@ -61,7 +64,8 @@ export const insertUserSchema = createInsertSchema(users).pick({
   password: true,
   name: true,
   email: true,
-  isAdmin: true
+  isAdmin: true,
+  createdAt: true
 });
 
 export const insertLocationSchema = createInsertSchema(locations).pick({
@@ -71,6 +75,7 @@ export const insertLocationSchema = createInsertSchema(locations).pick({
   state: true,
   zipCode: true,
   phoneNumber: true,
+  description: true,
   isActive: true
 });
 
@@ -80,6 +85,8 @@ export const insertRoomSchema = createInsertSchema(rooms).pick({
   capacity: true,
   description: true,
   features: true,
+  floor: true,
+  roomNumber: true,
   isActive: true
 });
 

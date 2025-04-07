@@ -494,4 +494,331 @@ export class MemStorage implements IStorage {
   }
 }
 
-export const storage = new MemStorage();
+import { db } from "./db";
+import { eq, and, sql } from "drizzle-orm";
+import connectPg from "connect-pg-simple";
+import { pool } from "./db";
+import * as schema from "@shared/schema";
+import type { 
+  User, InsertUser, Location, InsertLocation, Room, InsertRoom, Reservation, InsertReservation 
+} from "@shared/schema";
+
+const PostgresSessionStore = connectPg(session);
+
+export class DatabaseStorage implements IStorage {
+  public sessionStore: session.Store;
+
+  constructor() {
+    this.sessionStore = new PostgresSessionStore({ 
+      pool, 
+      createTableIfMissing: true 
+    });
+  }
+
+  async getUser(id: number): Promise<User | undefined> {
+    const [user] = await db.select().from(schema.users).where(eq(schema.users.id, id));
+    return user || undefined;
+  }
+
+  async getUserByUsername(username: string): Promise<User | undefined> {
+    const [user] = await db.select().from(schema.users).where(eq(schema.users.username, username));
+    return user || undefined;
+  }
+
+  async getAllUsers(): Promise<User[]> {
+    return db.select().from(schema.users);
+  }
+
+  async createUser(insertUser: InsertUser): Promise<User> {
+    const [user] = await db
+      .insert(schema.users)
+      .values(insertUser)
+      .returning();
+    return user;
+  }
+
+  async updateUser(id: number, userData: Partial<InsertUser>): Promise<User | undefined> {
+    const [user] = await db
+      .update(schema.users)
+      .set(userData)
+      .where(eq(schema.users.id, id))
+      .returning();
+    return user;
+  }
+
+  async getLocation(id: number): Promise<Location | undefined> {
+    const [location] = await db.select().from(schema.locations).where(eq(schema.locations.id, id));
+    return location || undefined;
+  }
+
+  async getAllLocations(): Promise<Location[]> {
+    return db.select().from(schema.locations);
+  }
+
+  async createLocation(location: InsertLocation): Promise<Location> {
+    const [newLocation] = await db
+      .insert(schema.locations)
+      .values(location)
+      .returning();
+    return newLocation;
+  }
+
+  async updateLocation(id: number, locationData: Partial<InsertLocation>): Promise<Location | undefined> {
+    const [location] = await db
+      .update(schema.locations)
+      .set(locationData)
+      .where(eq(schema.locations.id, id))
+      .returning();
+    return location;
+  }
+
+  async getRoom(id: number): Promise<Room | undefined> {
+    const [room] = await db.select().from(schema.rooms).where(eq(schema.rooms.id, id));
+    return room || undefined;
+  }
+
+  async getRoomsByLocation(locationId: number): Promise<Room[]> {
+    return db.select().from(schema.rooms).where(eq(schema.rooms.locationId, locationId));
+  }
+
+  async getAllRooms(): Promise<Room[]> {
+    return db.select().from(schema.rooms);
+  }
+
+  async createRoom(room: InsertRoom): Promise<Room> {
+    const [newRoom] = await db
+      .insert(schema.rooms)
+      .values(room)
+      .returning();
+    return newRoom;
+  }
+
+  async updateRoom(id: number, roomData: Partial<InsertRoom>): Promise<Room | undefined> {
+    const [room] = await db
+      .update(schema.rooms)
+      .set(roomData)
+      .where(eq(schema.rooms.id, id))
+      .returning();
+    return room;
+  }
+
+  async getReservation(id: number): Promise<Reservation | undefined> {
+    const [reservation] = await db.select().from(schema.reservations).where(eq(schema.reservations.id, id));
+    return reservation || undefined;
+  }
+
+  async getReservationsByRoom(roomId: number): Promise<Reservation[]> {
+    return db.select().from(schema.reservations).where(eq(schema.reservations.roomId, roomId));
+  }
+
+  async getReservationsByRoomAndDate(roomId: number, date: Date): Promise<Reservation[]> {
+    // Convert date to start and end of day
+    const startDate = new Date(date);
+    startDate.setHours(0, 0, 0, 0);
+    
+    const endDate = new Date(date);
+    endDate.setHours(23, 59, 59, 999);
+    
+    return db.select().from(schema.reservations).where(
+      and(
+        eq(schema.reservations.roomId, roomId),
+        sql`${schema.reservations.reservationDate} >= ${startDate}`,
+        sql`${schema.reservations.reservationDate} <= ${endDate}`
+      )
+    );
+  }
+
+  async getReservationsByUser(userId: number): Promise<Reservation[]> {
+    return db.select().from(schema.reservations).where(eq(schema.reservations.userId, userId));
+  }
+
+  async getAllReservations(): Promise<Reservation[]> {
+    return db.select().from(schema.reservations);
+  }
+
+  async createReservation(reservation: InsertReservation): Promise<Reservation> {
+    const [newReservation] = await db
+      .insert(schema.reservations)
+      .values(reservation)
+      .returning();
+    return newReservation;
+  }
+
+  async updateReservation(id: number, reservationData: Partial<InsertReservation>): Promise<Reservation | undefined> {
+    const [reservation] = await db
+      .update(schema.reservations)
+      .set(reservationData)
+      .where(eq(schema.reservations.id, id))
+      .returning();
+    return reservation;
+  }
+
+  async cancelReservation(id: number): Promise<Reservation | undefined> {
+    // Mark reservation as canceled
+    const [reservation] = await db
+      .update(schema.reservations)
+      .set({ status: 'cancelled' })
+      .where(eq(schema.reservations.id, id))
+      .returning();
+    return reservation;
+  }
+
+  // Initialize sample data for rooms and locations - but only if they don't exist
+  async initializeSampleData() {
+    // Check if we have any rooms
+    const existingRooms = await this.getAllRooms();
+    if (existingRooms.length > 0) {
+      console.log("Sample data already exists, skipping initialization");
+      return;
+    }
+
+    console.log("Initializing sample data...");
+
+    // Create admin user
+    const adminUser: InsertUser = {
+      username: "admin",
+      password: "$2b$10$ccQJwNDq7s.tZRjL4Owpe.481dWkVfnB2zIWENEAjLNsDRuNwUlTm", // "admin123"
+      name: "Administrator",
+      email: "admin@library.org",
+      isAdmin: true,
+      createdAt: new Date()
+    };
+    await this.createUser(adminUser);
+
+    // Create regular user
+    const regularUser: InsertUser = {
+      username: "user",
+      password: "$2b$10$ybYRDq/CTx9lEz4JN1t.w.QKgg8zsgxfzCFZ9FCIlV0yUKN0s0YN6", // "user123"
+      name: "Regular User",
+      email: "user@example.com",
+      isAdmin: false,
+      createdAt: new Date()
+    };
+    await this.createUser(regularUser);
+
+    // Create locations
+    const southLocation: InsertLocation = {
+      name: "South Boulevard Branch",
+      address: "4310 South Blvd, Charlotte, NC 28209",
+      city: "Charlotte",
+      state: "NC",
+      zipCode: "28209",
+      phoneNumber: "704-555-0123",
+      description: "The South Boulevard Branch is a state-of-the-art facility offering quiet study spaces, meeting rooms, and advanced technology resources."
+    };
+    const createdSouthLocation = await this.createLocation(southLocation);
+
+    const universityLocation: InsertLocation = {
+      name: "University Branch",
+      address: "301 East W.T. Harris Blvd, Charlotte, NC 28262",
+      city: "Charlotte",
+      state: "NC",
+      zipCode: "28262",
+      phoneNumber: "704-555-0456",
+      description: "Located near UNC Charlotte, this branch specializes in academic resources and study environments for university students and faculty."
+    };
+    const createdUniversityLocation = await this.createLocation(universityLocation);
+
+    // Create rooms for South Boulevard
+    await this.createRoom({
+      name: "Group Study Room",
+      capacity: 12,
+      description: "A large meeting room ideal for group study sessions and collaborative projects. The room includes a large table with 12 chairs, a wall-mounted TV for presentations, and a whiteboard.",
+      locationId: createdSouthLocation.id,
+      features: ["Whiteboard", "TV with HDMI", "Conference Phone", "WiFi"],
+      floor: 2,
+      roomNumber: "201"
+    });
+
+    await this.createRoom({
+      name: "Study Room 1",
+      capacity: 5,
+      description: "Medium-sized room suitable for small group discussions. Includes a round table with 5 chairs and a wall-mounted whiteboard.",
+      locationId: createdSouthLocation.id,
+      features: ["Whiteboard", "WiFi", "Standing Desk"],
+      floor: 1,
+      roomNumber: "101"
+    });
+
+    await this.createRoom({
+      name: "Study Room 2",
+      capacity: 5,
+      description: "Medium-sized room suitable for small group discussions. Includes a round table with 5 chairs and a wall-mounted whiteboard.",
+      locationId: createdSouthLocation.id,
+      features: ["Whiteboard", "WiFi", "Power Outlets"],
+      floor: 1,
+      roomNumber: "102"
+    });
+
+    await this.createRoom({
+      name: "Study Room 3",
+      capacity: 2,
+      description: "A small, quiet room ideal for individual or paired study sessions. Includes a small desk with 2 chairs.",
+      locationId: createdSouthLocation.id,
+      features: ["Small Desk", "WiFi", "Quiet Area"],
+      floor: 1,
+      roomNumber: "103"
+    });
+
+    await this.createRoom({
+      name: "Study Room 4",
+      capacity: 2,
+      description: "A small, quiet room ideal for individual or paired study sessions. Includes a small desk with 2 chairs.",
+      locationId: createdSouthLocation.id,
+      features: ["Small Desk", "WiFi", "Quiet Area"],
+      floor: 1,
+      roomNumber: "104"
+    });
+
+    await this.createRoom({
+      name: "Study Room 5",
+      capacity: 2,
+      description: "A small, quiet room ideal for individual or paired study sessions. Includes a small desk with 2 chairs and a nice window view.",
+      locationId: createdSouthLocation.id,
+      features: ["Small Desk", "WiFi", "Quiet Area", "Window View"],
+      floor: 1,
+      roomNumber: "105"
+    });
+
+    // Create rooms for University Branch
+    await this.createRoom({
+      name: "Collaboration Lab",
+      capacity: 20,
+      description: "Large open space designed for collaborative projects. Features movable furniture, multiple whiteboards, and advanced presentation technology.",
+      locationId: createdUniversityLocation.id,
+      features: ["Multiple Whiteboards", "Projector", "Movable Furniture", "WiFi", "Video Conference"],
+      floor: 2,
+      roomNumber: "201"
+    });
+
+    await this.createRoom({
+      name: "Quiet Study Room 1",
+      capacity: 4,
+      description: "Soundproof room ideal for focused study. Includes a table with 4 chairs and dimmable lighting.",
+      locationId: createdUniversityLocation.id,
+      features: ["Soundproof", "Dimmable Lighting", "WiFi", "Power Outlets"],
+      floor: 3,
+      roomNumber: "301"
+    });
+
+    await this.createRoom({
+      name: "Quiet Study Room 2",
+      capacity: 4,
+      description: "Soundproof room ideal for focused study. Includes a table with 4 chairs and dimmable lighting.",
+      locationId: createdUniversityLocation.id,
+      features: ["Soundproof", "Dimmable Lighting", "WiFi", "Power Outlets"],
+      floor: 3,
+      roomNumber: "302"
+    });
+
+    console.log("Sample data initialization complete");
+  }
+}
+
+// Use DatabaseStorage instead of MemStorage
+export const storage = new DatabaseStorage();
+
+// Initialize sample data
+storage.initializeSampleData().catch(err => {
+  console.error("Error initializing sample data:", err);
+});
