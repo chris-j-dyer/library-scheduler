@@ -1,5 +1,6 @@
 import { 
   users, 
+  reservations as schema,
   type User, 
   type InsertUser, 
   type Room, 
@@ -12,6 +13,7 @@ import {
 import { format } from "date-fns";
 import session from "express-session";
 import createMemoryStore from "memorystore";
+import { sql, eq, and } from "drizzle-orm";
 
 // Expanded storage interface with CRUD operations for all our models
 export interface IStorage {
@@ -641,20 +643,24 @@ export class DatabaseStorage implements IStorage {
     const formattedDate = format(date, 'yyyy-MM-dd');
     console.log(`Looking for reservations on date: ${formattedDate}`);
     
-    // Get all reservations where the reservationDate matches the formatted date
-    // PostgreSQL stores dates in a format that may require explicit conversion
-    const reservations = await db.select().from(schema.reservations);
+    // Use SQL to directly compare the dates in the database
+    // This uses PostgreSQL's DATE() function to extract just the date part
+    const reservations = await db.select().from(schema.reservations)
+      .where(sql`DATE(${schema.reservations.reservationDate}) = ${formattedDate}`);
     
-    // Filter reservations in JavaScript since PostgreSQL date comparison can be tricky
-    const filtered = reservations.filter(res => {
-      // Convert the database date to the same format
-      const resDate = format(new Date(res.reservationDate), 'yyyy-MM-dd');
-      console.log(`Comparing reservation date ${resDate} with ${formattedDate}`);
-      return resDate === formattedDate;
-    });
+    console.log(`Found ${reservations.length} reservations for ${formattedDate}`);
     
-    console.log(`Found ${filtered.length} reservations for ${formattedDate}`);
-    return filtered;
+    // Debug the time values to help diagnose issues
+    if (reservations.length > 0) {
+      reservations.forEach(res => {
+        console.log(`Reservation #${res.id}: 
+        - Date: ${format(new Date(res.reservationDate), 'yyyy-MM-dd')}
+        - Start: ${format(new Date(res.startTime), 'HH:mm:ss')}
+        - End: ${format(new Date(res.endTime), 'HH:mm:ss')}`);
+      });
+    }
+    
+    return reservations;
   }
 
   async getReservationsByUser(userId: number): Promise<Reservation[]> {

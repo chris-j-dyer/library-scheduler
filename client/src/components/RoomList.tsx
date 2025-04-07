@@ -274,13 +274,36 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     
     // Start at 2pm (14:00) and go until 11pm (23:00)
     for (let hour = 14; hour <= 24; hour++) {
+      // Log the reservations we're checking against for debugging
+      console.log(`Checking hour ${hour} for room ${roomId}`);
+      reservations.forEach(res => {
+        if (res.roomId === roomId) {
+          console.log(`Reservation: id=${res.id}, start=${format(res.startTime, 'HH:mm')}, end=${format(res.endTime, 'HH:mm')}`);
+        }
+      });
+      
       // Check if there's a reservation for this room at this time on the selected date
-      const isReserved = reservations.some(reservation => 
-        reservation.roomId === roomId && 
-        isSameDay(reservation.date, selectedDate) && 
-        hour >= reservation.startTime.getHours() && 
-        hour < reservation.endTime.getHours()
-      );
+      // We need to handle the case where the stored date and selected date might have different timezones
+      // by normalizing both to just compare hours
+      const isReserved = reservations.some(reservation => {
+        if (reservation.roomId !== roomId) {
+          return false;
+        }
+        
+        // Check if the date matches the selected date by comparing the date portion only
+        if (!isSameDay(new Date(reservation.date), selectedDate)) {
+          return false;
+        }
+        
+        // Get hours for comparison
+        const startHour = reservation.startTime.getHours();
+        const endHour = reservation.endTime.getHours();
+        
+        console.log(`Comparing hour ${hour} with reservation hours: ${startHour}-${endHour}`);
+        
+        // Check if current hour falls within the reservation time range
+        return hour >= startHour && hour < endHour;
+      });
       
       timeSlots.push({
         hour,
@@ -368,12 +391,21 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         id: newReservation.id,
         roomId: selectedRoom.id,
         date: selectedDate,
-        startTime: setHours(new Date(selectedDate), selectedTimeSlot),
-        endTime: setHours(new Date(selectedDate), selectedTimeSlot + selectedDuration),
+        // Create proper Date objects with the correct date and time
+        startTime: new Date(format(setHours(new Date(selectedDate), selectedTimeSlot), 'yyyy-MM-dd HH:mm:ss')),
+        endTime: new Date(format(setHours(new Date(selectedDate), selectedTimeSlot + selectedDuration), 'yyyy-MM-dd HH:mm:ss')),
         userName,
         userEmail,
         purpose: purpose || "Study session"
       };
+      
+      console.log('Created client reservation:', {
+        id: clientReservation.id,
+        roomId: clientReservation.roomId,
+        date: format(clientReservation.date, 'yyyy-MM-dd'),
+        startTime: format(clientReservation.startTime, 'HH:mm:ss'),
+        endTime: format(clientReservation.endTime, 'HH:mm:ss')
+      });
       
       // Manually force a re-render by creating a new reservations array that includes the just-made reservation
       // This will cause the getRoomSchedule function to mark those time slots as unavailable
@@ -432,12 +464,23 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       const currentHour = hour + i;
       if (currentHour > 24) return false; // Past midnight
       
-      const isReserved = reservations.some(reservation => 
-        reservation.roomId === roomId && 
-        isSameDay(reservation.date, selectedDate) && 
-        currentHour >= reservation.startTime.getHours() && 
-        currentHour < reservation.endTime.getHours()
-      );
+      const isReserved = reservations.some(reservation => {
+        if (reservation.roomId !== roomId) {
+          return false;
+        }
+        
+        // Check if the date matches the selected date
+        if (!isSameDay(new Date(reservation.date), selectedDate)) {
+          return false;
+        }
+        
+        // Get hours for comparison
+        const startHour = reservation.startTime.getHours();
+        const endHour = reservation.endTime.getHours();
+        
+        // Check if current hour falls within the reservation time range
+        return currentHour >= startHour && currentHour < endHour;
+      });
       
       if (isReserved) return false;
     }
