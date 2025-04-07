@@ -1,63 +1,164 @@
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Calendar, ChevronLeft, ChevronRight } from "lucide-react";
+import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, RefreshCcw } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { format, addDays, isToday, isSameDay, startOfDay, addMonths, subDays } from "date-fns";
+import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 import RoomList from "./RoomList";
 
 export default function CalendarView() {
+  const { toast } = useToast();
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  const [calendarOpen, setCalendarOpen] = useState(false);
+  const [showingWeek, setShowingWeek] = useState(true);
+  
+  const weekEndDate = addDays(selectedDate, 6);
+  
+  const handlePrevious = () => {
+    setSelectedDate(prev => subDays(prev, showingWeek ? 7 : 1));
+  };
+  
+  const handleNext = () => {
+    setSelectedDate(prev => addDays(prev, showingWeek ? 7 : 1));
+  };
+  
+  const handleDateSelect = (date: Date | undefined) => {
+    if (date) {
+      const now = new Date();
+      const selectedDay = startOfDay(date);
+      
+      // Check if selected date is in the past
+      if (selectedDay < startOfDay(now)) {
+        toast({
+          title: "Cannot select past dates",
+          description: "Please select today or a future date",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Check if selected date is more than 3 months in the future
+      if (selectedDay > startOfDay(addMonths(now, 3))) {
+        toast({
+          title: "Date too far in the future",
+          description: "You can only book rooms up to 3 months in advance",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      setSelectedDate(date);
+      setCalendarOpen(false);
+    }
+  };
+  
+  const resetView = () => {
+    toast({
+      title: "View reset",
+      description: "Calendar view has been refreshed"
+    });
+  };
+  
+  const toggleView = () => {
+    setShowingWeek(prev => !prev);
+  };
+  
+  const dateTitle = showingWeek 
+    ? `${format(selectedDate, "MMMM d, yyyy")} – ${format(weekEndDate, "MMMM d, yyyy")}`
+    : format(selectedDate, "EEEE, MMMM d, yyyy");
+  
   return (
-    <div className="mb-6">
-      <h2 className="text-lg font-medium mb-2">Monday, April 7, 2025 – Sunday, April 13, 2025</h2>
-      <div className="flex items-center mb-4">
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="border border-[#ddd] px-2 py-0.5 mr-2 bg-gray-100 rounded text-sm inline-flex items-center h-[26px] min-h-[26px]"
-        >
-          <Calendar className="h-4 w-4 mr-1" />
-          Go To Date
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="border border-[#ddd] px-3 py-0.5 mx-1 bg-gray-100 rounded text-sm inline-flex items-center h-[26px] min-h-[26px] min-w-[26px]"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
-        <Button 
-          variant="outline" 
-          size="sm" 
-          className="border border-[#ddd] px-3 py-0.5 mx-1 bg-gray-100 rounded text-sm inline-flex items-center h-[26px] min-h-[26px] min-w-[26px]"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+    <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 mb-8">
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
+        <h2 className="text-xl font-semibold text-gray-800 mb-2 md:mb-0">
+          {dateTitle}
+        </h2>
+        <div className="flex items-center space-x-2">
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <Button 
+                variant="outline" 
+                className="border border-gray-200 px-3 py-2 bg-gray-50 rounded-md h-10 text-gray-700 hover:bg-gray-100 transition-colors flex items-center"
+              >
+                <CalendarIcon className="h-4 w-4 mr-2 text-blue-600" />
+                <span>Select Date</span>
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="end">
+              <Calendar
+                mode="single"
+                selected={selectedDate}
+                onSelect={handleDateSelect}
+                initialFocus
+                disabled={(date) => date < subDays(new Date(), 1)}
+              />
+            </PopoverContent>
+          </Popover>
+          
+          <div className="date-navigator flex rounded-md overflow-hidden">
+            <Button 
+              variant="outline" 
+              className="border border-gray-200 px-3 py-2 rounded-l-md h-10 hover:bg-gray-100 transition-colors"
+              onClick={handlePrevious}
+              disabled={isToday(selectedDate) || selectedDate < new Date()}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <Button 
+              variant="outline" 
+              className="border-t border-b border-gray-200 px-3 py-2 h-10 hover:bg-gray-100 transition-colors"
+              onClick={toggleView}
+            >
+              {showingWeek ? "Day" : "Week"}
+            </Button>
+            <Button 
+              variant="outline" 
+              className="border border-gray-200 px-3 py-2 rounded-r-md h-10 hover:bg-gray-100 transition-colors"
+              onClick={handleNext}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+          
+          <Button 
+            variant="outline" 
+            className="border border-gray-200 px-3 py-2 rounded-md h-10 hover:bg-gray-100 transition-colors"
+            onClick={resetView}
+          >
+            <RefreshCcw className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
 
       {/* Calendar Grid */}
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse border border-[#ddd]">
+        <table className="w-full border-collapse border border-gray-200 rounded-lg overflow-hidden">
           <thead>
             <tr>
-              <th className="border border-[#ddd] p-2 text-left w-72">Space</th>
-              <th className="border border-[#ddd] p-2 text-center" colSpan={11}>
-                Monday, April 7, 2025
+              <th className="border border-gray-200 p-3 text-left w-72 bg-gray-50">Space</th>
+              <th className="border border-gray-200 p-3 text-center bg-gray-50" colSpan={11}>
+                {format(selectedDate, "EEEE, MMMM d, yyyy")}
               </th>
             </tr>
             <tr>
-              <th className="border border-[#ddd] bg-gray-100 p-2"></th>
-              <th className="border border-[#ddd] bg-gray-100 p-1 text-sm text-center w-16">2:00pm</th>
-              <th className="border border-[#ddd] bg-gray-100 p-1 text-sm text-center w-16">3:00pm</th>
-              <th className="border border-[#ddd] bg-gray-100 p-1 text-sm text-center w-16">4:00pm</th>
-              <th className="border border-[#ddd] bg-gray-100 p-1 text-sm text-center w-16">5:00pm</th>
-              <th className="border border-[#ddd] bg-gray-100 p-1 text-sm text-center w-16">6:00pm</th>
-              <th className="border border-[#ddd] bg-gray-100 p-1 text-sm text-center w-16">7:00pm</th>
-              <th className="border border-[#ddd] bg-gray-100 p-1 text-sm text-center w-16">8:00pm</th>
-              <th className="border border-[#ddd] bg-gray-100 p-1 text-sm text-center w-16">9:00pm</th>
-              <th className="border border-[#ddd] bg-gray-100 p-1 text-sm text-center w-16">10:00pm</th>
-              <th className="border border-[#ddd] bg-gray-100 p-1 text-sm text-center w-16">11:00pm</th>
-              <th className="border border-[#ddd] bg-gray-100 p-1 text-sm text-center w-16">12:00am</th>
+              <th className="border border-gray-200 bg-gray-50 p-2"></th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">2:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">3:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">4:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">5:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">6:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">7:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">8:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">9:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">10:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">11:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">12:00am</th>
             </tr>
           </thead>
           <tbody>
-            <RoomList />
+            <RoomList selectedDate={selectedDate} />
           </tbody>
         </table>
       </div>
