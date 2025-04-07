@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { format, setHours, addHours, isSameDay } from "date-fns";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 
 // Define room and reservation types
 type Room = {
@@ -117,7 +119,7 @@ interface RoomListProps {
 export default function RoomList({ selectedDate }: RoomListProps) {
   const { toast } = useToast();
   const { user } = useAuth();
-  const [reservations, setReservations] = useState<Reservation[]>([]);
+  const queryClient = useQueryClient();
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<number | null>(null);
   const [selectedDuration, setSelectedDuration] = useState<number>(1);
@@ -129,6 +131,78 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   const [purpose, setPurpose] = useState("");
   const websocketRef = useRef<WebSocket | null>(null);
   
+  // Format date for the query
+  const formattedDate = format(selectedDate, 'yyyy-MM-dd');
+  
+  // Use React Query to fetch and cache reservations
+  const { 
+    data: reservations = [], 
+    isLoading,
+    error 
+  } = useQuery<Reservation[]>({
+    queryKey: ['reservations', formattedDate],
+    queryFn: async () => {
+      console.log(`Fetching reservations for date: ${formattedDate}`);
+      
+      // Use the dedicated endpoint for date-based reservations
+      const response = await fetch(`/api/reservations/by-date/${formattedDate}`);
+      
+      if (!response.ok) {
+        console.error(`Error response from server: ${response.status} ${response.statusText}`);
+        throw new Error('Failed to fetch reservations');
+      }
+      
+      const data = await response.json();
+      console.log('Reservations data received:', data);
+      
+      // Map API reservations to client format
+      const clientReservations: Reservation[] = data.map((res: any) => {
+        // Ensure we have proper Date objects for all date fields
+        const reservation = {
+          id: res.id,
+          roomId: res.roomId,
+          date: new Date(res.reservationDate),
+          startTime: new Date(res.startTime),
+          endTime: new Date(res.endTime),
+          userName: res.userId ? (res.userName || 'User') : res.guestName,
+          userEmail: res.userId ? (res.userEmail || '') : res.guestEmail,
+          purpose: res.purpose || 'Reservation'
+        };
+        
+        console.log(`Processed reservation for room ${reservation.roomId} on ${format(reservation.date, 'yyyy-MM-dd')} at ${format(reservation.startTime, 'HH:mm')}`);
+        return reservation;
+      });
+      
+      console.log(`Loaded ${clientReservations.length} reservations for date ${formattedDate}`);
+      return clientReservations;
+    },
+    staleTime: 1000 * 60 * 5, // Consider data fresh for 5 minutes
+    gcTime: 1000 * 60 * 30, // Keep data in cache for 30 minutes
+  });
+  
+  // Display loading state if needed
+  if (isLoading) {
+    return (
+      <tr>
+        <td colSpan={12} className="h-24 text-center">
+          <div className="flex justify-center items-center h-full">
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+            <span>Loading reservations...</span>
+          </div>
+        </td>
+      </tr>
+    );
+  }
+
+  // If error occurred, show error state
+  if (error) {
+    toast({
+      title: "Error loading reservations",
+      description: error instanceof Error ? error.message : "Unknown error occurred",
+      variant: "destructive"
+    });
+  }
+  
   // Update user info when user changes (logs in/out)
   useEffect(() => {
     if (user) {
@@ -139,67 +213,6 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       setUserEmail("");
     }
   }, [user]);
-  
-  // Load existing reservations when component mounts or date changes
-  useEffect(() => {
-    // Function to load all room reservations for the selected date
-    const loadReservations = async () => {
-      try {
-        const formattedDate = format(selectedDate, 'yyyy-MM-dd');
-        console.log(`Fetching reservations for date: ${formattedDate}`);
-        
-        // Use the new dedicated endpoint for date-based reservations
-        const response = await fetch(`/api/reservations/by-date/${formattedDate}`);
-        
-        if (!response.ok) {
-          console.error(`Error response from server: ${response.status} ${response.statusText}`);
-          throw new Error('Failed to fetch reservations');
-        }
-        
-        const data = await response.json();
-        console.log('Reservations data received:', data);
-        
-        // Map API reservations to client format
-        const clientReservations: Reservation[] = data.map((res: any) => {
-          // Log the raw date values from the server
-          console.log(`Processing reservation #${res.id}:`, {
-            reservationDate: res.reservationDate,
-            startTime: res.startTime,
-            endTime: res.endTime
-          });
-          
-          // Ensure we have proper Date objects for all date fields
-          const reservation = {
-            id: res.id,
-            roomId: res.roomId,
-            date: new Date(res.reservationDate),
-            startTime: new Date(res.startTime),
-            endTime: new Date(res.endTime),
-            userName: res.userId ? (res.userName || 'User') : res.guestName,
-            userEmail: res.userId ? (res.userEmail || '') : res.guestEmail,
-            purpose: res.purpose || 'Reservation'
-          };
-          
-          console.log(`Processed reservation for room ${reservation.roomId} on ${format(reservation.date, 'yyyy-MM-dd')} at ${format(reservation.startTime, 'HH:mm')}`);
-          return reservation;
-        });
-        
-        console.log(`Loaded ${clientReservations.length} reservations for date ${formattedDate}`);
-        
-        // Update reservations state
-        setReservations(clientReservations);
-      } catch (error) {
-        console.error('Error fetching reservations:', error);
-        toast({
-          title: "Error",
-          description: "Failed to load room reservations",
-          variant: "destructive"
-        });
-      }
-    };
-    
-    loadReservations();
-  }, [selectedDate, toast]);
   
   // Setup WebSocket connection
   useEffect(() => {
@@ -225,8 +238,10 @@ export default function RoomList({ selectedDate }: RoomListProps) {
           // Add the new reservation to our state if it's for today
           const reservation = message.data;
           const reservationDate = new Date(reservation.reservationDate);
+          const reservationFormattedDate = format(reservationDate, 'yyyy-MM-dd');
           
-          if (isSameDay(reservationDate, selectedDate)) {
+          // Check if the reservation is for the currently selected date
+          if (reservationFormattedDate === formattedDate) {
             // Convert reservation to client format
             const clientReservation: Reservation = {
               id: reservation.id,
@@ -239,18 +254,25 @@ export default function RoomList({ selectedDate }: RoomListProps) {
               purpose: reservation.purpose || 'Reservation'
             };
             
-            // Only add if it's not from the current user (to avoid duplicates)
-            if (!reservations.some(r => r.id === clientReservation.id)) {
-              // Immediately update the reservations state to reflect the new booking
-              // This forces a re-render which updates the calendar cells
-              setReservations(prevReservations => [...prevReservations, clientReservation]);
-              
-              // Show toast notification
-              toast({
-                title: "New Reservation",
-                description: `Room ${clientReservation.roomId} has been reserved`,
-              });
-            }
+            // Use React Query's cache to update the data
+            queryClient.setQueryData(['reservations', formattedDate], (oldData: Reservation[] = []) => {
+              // Only add if it's not already in the cache (to avoid duplicates)
+              if (!oldData.some(r => r.id === clientReservation.id)) {
+                console.log('Adding new reservation to React Query cache');
+                return [...oldData, clientReservation];
+              }
+              return oldData;
+            });
+            
+            // Show toast notification
+            toast({
+              title: "New Reservation",
+              description: `Room ${clientReservation.roomId} has been reserved`,
+            });
+          } else {
+            // If it's for a different date, invalidate that date's query to force a refresh if they visit that date
+            console.log(`Invalidating query for date: ${reservationFormattedDate}`);
+            queryClient.invalidateQueries({ queryKey: ['reservations', reservationFormattedDate] });
           }
         }
       } catch (error) {
@@ -274,7 +296,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         socket.close();
       }
     };
-  }, [selectedDate, toast]);
+  }, [formattedDate, queryClient, toast]);
   
   // Generate schedule for each room
   const getRoomSchedule = (roomId: number) => {
@@ -392,9 +414,13 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         endTime: format(clientReservation.endTime, 'HH:mm:ss')
       });
       
-      // Manually force a re-render by creating a new reservations array that includes the just-made reservation
-      // This will cause the getRoomSchedule function to mark those time slots as unavailable
-      setReservations([...reservations, clientReservation]);
+      // Update the React Query cache with the new reservation
+      queryClient.setQueryData(['reservations', formattedDate], (oldData: Reservation[] = []) => {
+        return [...oldData, clientReservation];
+      });
+      
+      // Also invalidate the query to ensure fresh data is fetched next time
+      queryClient.invalidateQueries({ queryKey: ['reservations', formattedDate] });
       
       // Close booking modal and show confirmation
       setIsModalOpen(false);
