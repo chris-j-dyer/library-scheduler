@@ -4,7 +4,7 @@ import { Route, Redirect } from "wouter";
 
 interface ProtectedRouteProps {
   path: string;
-  component: React.ComponentType;
+  component: React.ComponentType<any>;
 }
 
 export function ProtectedRoute({ path, component: Component }: ProtectedRouteProps) {
