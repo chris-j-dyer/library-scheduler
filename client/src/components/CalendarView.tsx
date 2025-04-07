@@ -36,7 +36,7 @@ export default function CalendarView() {
         <table className="w-full border-collapse border border-[#ddd]">
           <thead>
             <tr>
-              <th className="border border-[#ddd] p-2 text-left w-56">Space</th>
+              <th className="border border-[#ddd] p-2 text-left w-72">Space</th>
               <th className="border border-[#ddd] p-2 text-center" colSpan={11}>
                 Monday, April 7, 2025
               </th>
