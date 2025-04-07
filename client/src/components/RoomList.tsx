@@ -321,6 +321,9 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         purpose: purpose || "Study session"
       };
       
+      // Mark cell as unavailable in the UI by forcing a re-render of reservations
+      // The actual time slot will be marked as unavailable when reservations are updated
+      
       setReservations([...reservations, clientReservation]);
       
       // Close booking modal and show confirmation

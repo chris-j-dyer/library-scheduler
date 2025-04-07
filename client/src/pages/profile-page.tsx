@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
-import { format } from "date-fns";
+import { format, addHours } from "date-fns";
 import { Calendar, Clock, MapPin, Users } from "lucide-react";
 import { useState } from "react";
 import { Reservation, Room, Location } from "@shared/schema";
@@ -227,7 +227,8 @@ function ReservationCard({
               </Badge>
               <Badge variant="outline" className="flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                {format(new Date(reservation.startTime), "h:mm a")} - {format(new Date(reservation.endTime), "h:mm a")}
+                {/* Add 4 hours to compensate for timezone issue */}
+                {format(addHours(new Date(reservation.startTime), 4), "h:mm a")} - {format(addHours(new Date(reservation.endTime), 4), "h:mm a")}
               </Badge>
             </div>
           </div>
