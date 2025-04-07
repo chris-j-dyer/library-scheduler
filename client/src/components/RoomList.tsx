@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { UserIcon, ShieldCheckIcon, Info, Wifi, Tv, Clock } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -127,6 +127,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   const [userName, setUserName] = useState(user ? (user.name || user.username) : "");
   const [userEmail, setUserEmail] = useState(user ? (user.email || "") : "");
   const [purpose, setPurpose] = useState("");
+  const websocketRef = useRef<WebSocket | null>(null);
   
   // Update user info when user changes (logs in/out)
   useEffect(() => {
@@ -138,6 +139,79 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       setUserEmail("");
     }
   }, [user]);
+  
+  // Setup WebSocket connection
+  useEffect(() => {
+    // Create WebSocket connection
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/ws`;
+    const socket = new WebSocket(wsUrl);
+    websocketRef.current = socket;
+    
+    // Connection opened
+    socket.addEventListener('open', (event) => {
+      console.log('WebSocket connection established');
+    });
+    
+    // Listen for messages
+    socket.addEventListener('message', (event) => {
+      try {
+        const message = JSON.parse(event.data);
+        console.log('WebSocket message received:', message);
+        
+        // Handle different message types
+        if (message.type === 'new_reservation') {
+          // Add the new reservation to our state if it's for today
+          const reservation = message.data;
+          const reservationDate = new Date(reservation.reservationDate);
+          
+          if (isSameDay(reservationDate, selectedDate)) {
+            // Convert reservation to client format
+            const clientReservation: Reservation = {
+              id: reservation.id,
+              roomId: reservation.roomId,
+              date: new Date(reservation.reservationDate),
+              startTime: new Date(reservation.startTime),
+              endTime: new Date(reservation.endTime),
+              userName: reservation.userId ? (reservation.userName || 'User') : reservation.guestName,
+              userEmail: reservation.userId ? (reservation.userEmail || '') : reservation.guestEmail,
+              purpose: reservation.purpose || 'Reservation'
+            };
+            
+            // Only add if it's not from the current user (to avoid duplicates)
+            if (!reservations.some(r => r.id === clientReservation.id)) {
+              setReservations(prevReservations => [...prevReservations, clientReservation]);
+              
+              // Show toast notification
+              toast({
+                title: "New Reservation",
+                description: `Room ${clientReservation.roomId} has been reserved`,
+              });
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error parsing WebSocket message:', error);
+      }
+    });
+    
+    // Connection closed
+    socket.addEventListener('close', (event) => {
+      console.log('WebSocket connection closed');
+    });
+    
+    // Connection error
+    socket.addEventListener('error', (event) => {
+      console.error('WebSocket error:', event);
+    });
+    
+    // Cleanup on unmount
+    return () => {
+      if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.close();
+      }
+    };
+  }, [selectedDate, toast]);
   
   // Generate schedule for each room
   const getRoomSchedule = (roomId: number) => {
@@ -205,9 +279,10 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     // Prepare reservation data for API
     const reservationData = {
       roomId: selectedRoom.id,
-      reservationDate: format(selectedDate, 'yyyy-MM-dd'),
-      startTime: format(setHours(new Date(selectedDate), selectedTimeSlot), 'yyyy-MM-dd HH:mm:ss'),
-      endTime: format(setHours(new Date(selectedDate), selectedTimeSlot + selectedDuration), 'yyyy-MM-dd HH:mm:ss'),
+      // Create proper Date objects for the API
+      reservationDate: selectedDate,
+      startTime: setHours(new Date(selectedDate), selectedTimeSlot),
+      endTime: setHours(new Date(selectedDate), selectedTimeSlot + selectedDuration),
       purpose: purpose || "Study session",
       // If user is logged in, these fields will be associated with the user account
       // Otherwise, use the guest fields
