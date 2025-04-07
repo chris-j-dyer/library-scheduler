@@ -47,10 +47,19 @@ type RegisterFormValues = z.infer<typeof registerFormSchema>;
 export default function AuthPage() {
   const [activeTab, setActiveTab] = useState<string>("login");
   const [location, navigate] = useLocation();
-  const { user, loginMutation, registerMutation } = useAuth();
+  const { user, isLoading, loginMutation, registerMutation } = useAuth();
 
-  // Redirect if already logged in
-  if (user) {
+  // Debug logging
+  console.log("AuthPage rendering, auth state:", { 
+    isLoggedIn: !!user, 
+    isLoading, 
+    currentLocation: location,
+    userData: user 
+  });
+
+  // Only redirect when we know for sure the user is logged in and auth status is not loading
+  if (user && !isLoading) {
+    console.log("User is authenticated, redirecting to home");
     navigate("/");
     return null;
   }
@@ -126,6 +135,7 @@ export default function AuthPage() {
 
 function LoginForm({ onSuccess, isLoading }: { onSuccess: () => void, isLoading: boolean }) {
   const { loginMutation } = useAuth();
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),
@@ -136,8 +146,18 @@ function LoginForm({ onSuccess, isLoading }: { onSuccess: () => void, isLoading:
   });
 
   const onSubmit = (values: LoginFormValues) => {
+    setLoginError(null);
+    console.log("Login form submission:", { username: values.username });
+    
     loginMutation.mutate(values, {
-      onSuccess,
+      onSuccess: (user) => {
+        console.log("Login successful, user data:", user);
+        onSuccess();
+      },
+      onError: (error) => {
+        console.error("Login error in form handler:", error);
+        setLoginError(error.message || "Login failed. Please check your credentials.");
+      }
     });
   };
 
@@ -178,6 +198,14 @@ function LoginForm({ onSuccess, isLoading }: { onSuccess: () => void, isLoading:
                 </FormItem>
               )}
             />
+            
+            {/* Login error display */}
+            {loginError && (
+              <div className="p-3 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm">
+                {loginError}
+              </div>
+            )}
+            
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
                 <>

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import { Route, Redirect } from "wouter";
@@ -29,59 +29,71 @@ const ProtectedRouteErrorFallback = () => (
   </div>
 );
 
-// A safer wrapper for the component being rendered
-const ComponentWrapper = ({ Component }: { Component: React.ComponentType<any> }) => {
-  const [hasRendered, setHasRendered] = useState(false);
-  
-  // Use useEffect to mark successful render
-  useEffect(() => {
-    console.log("ComponentWrapper mounted successfully");
-    setHasRendered(true);
-  }, []);
-  
-  try {
-    console.log("Attempting to render component in ComponentWrapper");
-    return <Component />;
-  } catch (error) {
-    console.error("Error in ComponentWrapper:", error);
-    throw error; // Let the error boundary handle it
-  }
-};
-
 export function ProtectedRoute({ path, component: Component }: ProtectedRouteProps) {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading, error } = useAuth();
   
-  // Debug information
-  console.log('ProtectedRoute rendering for path:', path);
-  console.log('User state:', user ? `Logged in as ${user.username}` : 'Not logged in');
-  console.log('Loading state:', isLoading);
+  // Debug information with enhanced logging
+  console.log('ProtectedRoute rendering:', {
+    path,
+    isAuthenticated: !!user,
+    isLoading,
+    hasError: !!error,
+    userData: user,
+    errorMessage: error?.message
+  });
 
   return (
     <Route path={path}>
       {() => {
-        console.log('Inside Route render for path:', path);
-        console.log('User state inside Route:', user ? `Logged in as ${user.username}` : 'Not logged in');
-        console.log('Loading state inside Route:', isLoading);
+        // Check for auth state inside the route render function to ensure latest state
+        console.log('Route render function executing for:', path, {
+          isAuthenticated: !!user,
+          isLoading,
+          hasError: !!error
+        });
         
+        // Case 1: Still loading auth state - show loading spinner
         if (isLoading) {
           return (
-            <div className="flex items-center justify-center min-h-screen">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
-              <span className="ml-2">Loading user data...</span>
+            <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
+              <Loader2 className="h-12 w-12 animate-spin text-primary mb-4" />
+              <span className="text-lg text-gray-600">Verifying your credentials...</span>
             </div>
           );
         }
-
+        
+        // Case 2: Error in auth process - show error with debug info
+        if (error) {
+          console.error('Auth error in protected route:', error);
+          return (
+            <div className="flex flex-col items-center justify-center min-h-screen bg-red-50 p-4">
+              <h1 className="text-2xl font-bold text-red-600 mb-4">Authentication Error</h1>
+              <p className="text-gray-800 mb-4">There was a problem verifying your login status.</p>
+              <div className="bg-white p-4 rounded shadow mb-4 w-full max-w-lg">
+                <pre className="text-red-500 text-sm overflow-auto">{error.message}</pre>
+              </div>
+              <button 
+                onClick={() => window.location.href = '/auth'} 
+                className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Return to Login
+              </button>
+            </div>
+          );
+        }
+        
+        // Case 3: Not authenticated - redirect to auth page
         if (!user) {
-          console.log('Redirecting to /auth because user is not authenticated');
+          console.log('User not authenticated, redirecting to /auth');
           return <Redirect to="/auth" />;
         }
-
-        console.log('Rendering component for authenticated user');
+        
+        // Case 4: User is authenticated - render protected component
+        console.log('User authenticated, rendering protected component');
         
         return (
           <ErrorBoundary fallback={<ProtectedRouteErrorFallback />}>
-            <ComponentWrapper Component={Component} />
+            <Component />
           </ErrorBoundary>
         );
       }}

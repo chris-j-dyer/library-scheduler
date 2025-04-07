@@ -79,6 +79,20 @@ export default function Home() {
     console.log("User data in Home:", user);
     console.log("Auth loading state in Home:", isLoading);
     
+    // Validate user object
+    if (user) {
+      try {
+        console.log("User ID:", user.id);
+        console.log("Username:", user.username);
+        // Make sure user object has the expected properties
+        if (!user.id || !user.username) {
+          console.error("User object is missing required properties");
+        }
+      } catch (err) {
+        console.error("Error accessing user properties:", err);
+      }
+    }
+    
     // Set loaded after a short delay to ensure all child components have time to initialize
     const timer = setTimeout(() => {
       setIsLoaded(true);

@@ -56,27 +56,85 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     data: user,
     error,
     isLoading,
-  } = useQuery<SafeUser | null, Error>({
+    refetch: refetchUser
+  } = useQuery({
     queryKey: ["/api/user"],
     queryFn: getQueryFn({ on401: "returnNull" }),
+    retry: 1,  // Retry once in case of network issues
+    staleTime: 1000 * 60, // Data is fresh for 1 minute
+    refetchOnWindowFocus: true,
+    refetchOnMount: true
   });
 
   const loginMutation = useMutation<SafeUser, Error, LoginData>({
     mutationFn: async (credentials) => {
-      const res = await apiRequest("POST", "/api/login", credentials);
-      return await res.json();
+      console.log("Login mutation executing with credentials:", { username: credentials.username });
+      
+      try {
+        const res = await apiRequest("POST", "/api/login", credentials);
+        
+        if (!res.ok) {
+          console.error("Login API returned error status:", res.status);
+          if (res.status === 401) {
+            throw new Error("Invalid username or password");
+          } else {
+            throw new Error(`Login request failed with status: ${res.status}`);
+          }
+        }
+        
+        // Parse the response JSON
+        let data;
+        try {
+          data = await res.json();
+        } catch (jsonError) {
+          console.error("Failed to parse login response as JSON:", jsonError);
+          throw new Error("Server returned invalid data format");
+        }
+        
+        console.log("Login response data:", data);
+        
+        // Validate the user object
+        if (!data || typeof data !== 'object') {
+          throw new Error("Invalid response format from login endpoint");
+        }
+        
+        if (!data.id || !data.username) {
+          console.error("Missing required user properties in login response:", data);
+          throw new Error("Missing required user properties in response");
+        }
+        
+        return data;
+      } catch (err) {
+        console.error("Error in login mutation:", err);
+        throw err;
+      }
     },
     onSuccess: (user) => {
+      console.log("Login successful, user data:", user);
+      
+      // Set the user data in the query cache
       queryClient.setQueryData(["/api/user"], user);
+      
+      // Show success toast
       toast({
         title: "Login successful",
         description: `Welcome back, ${user.name || user.username}!`,
       });
+      
+      // Force a refetch of user data to ensure it's correct and reset any stale state
+      setTimeout(() => {
+        console.log("Invalidating user query after successful login");
+        queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+        
+        // Also force a refetch of user reservations
+        queryClient.invalidateQueries({ queryKey: ["/api/reservations"] });
+      }, 100);
     },
     onError: (error) => {
+      console.error("Login mutation error:", error);
       toast({
         title: "Login failed",
-        description: error.message,
+        description: error.message || "Please check your credentials and try again.",
         variant: "destructive",
       });
     },
@@ -123,10 +181,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     },
   });
 
+  // Cast the user data to SafeUser | null since we know the schema
+  const safeUser = user as SafeUser | null;
+  
+  // Add some debug logging
+  console.log("Auth provider state:", { 
+    hasUser: !!safeUser, 
+    isLoading, 
+    hasError: !!error,
+    userData: safeUser 
+  });
+
   return (
     <AuthContext.Provider
       value={{
-        user: user || null,
+        user: safeUser,
         isLoading,
         error,
         loginMutation,
