@@ -4,6 +4,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { format, setHours, addHours, isSameDay } from "date-fns";
 
 // Define room and reservation types
@@ -115,6 +116,7 @@ interface RoomListProps {
 
 export default function RoomList({ selectedDate }: RoomListProps) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [reservations, setReservations] = useState<Reservation[]>(initialReservations);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<number | null>(null);
@@ -122,9 +124,20 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isRoomInfoOpen, setIsRoomInfoOpen] = useState(false);
   const [isConfirmationOpen, setIsConfirmationOpen] = useState(false);
-  const [userName, setUserName] = useState("");
-  const [userEmail, setUserEmail] = useState("");
+  const [userName, setUserName] = useState(user ? (user.name || user.username) : "");
+  const [userEmail, setUserEmail] = useState(user ? (user.email || "") : "");
   const [purpose, setPurpose] = useState("");
+  
+  // Update user info when user changes (logs in/out)
+  useEffect(() => {
+    if (user) {
+      setUserName(user.name || user.username);
+      setUserEmail(user.email || "");
+    } else {
+      setUserName("");
+      setUserEmail("");
+    }
+  }, [user]);
   
   // Generate schedule for each room
   const getRoomSchedule = (roomId: number) => {
@@ -177,7 +190,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     }
   };
   
-  const handleBookingSubmit = () => {
+  const handleBookingSubmit = async () => {
     if (!selectedRoom || selectedTimeSlot === null) return;
     
     if (!userName || !userEmail) {
@@ -189,24 +202,63 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       return;
     }
     
-    // Create new reservation
-    const newReservation: Reservation = {
-      id: reservations.length + 1,
+    // Prepare reservation data for API
+    const reservationData = {
       roomId: selectedRoom.id,
-      date: selectedDate,
-      startTime: setHours(new Date(selectedDate), selectedTimeSlot),
-      endTime: setHours(new Date(selectedDate), selectedTimeSlot + selectedDuration),
-      userName,
-      userEmail,
-      purpose: purpose || "Study session"
+      reservationDate: format(selectedDate, 'yyyy-MM-dd'),
+      startTime: format(setHours(new Date(selectedDate), selectedTimeSlot), 'yyyy-MM-dd HH:mm:ss'),
+      endTime: format(setHours(new Date(selectedDate), selectedTimeSlot + selectedDuration), 'yyyy-MM-dd HH:mm:ss'),
+      purpose: purpose || "Study session",
+      // If user is logged in, these fields will be associated with the user account
+      // Otherwise, use the guest fields
+      guestName: userName,
+      guestEmail: userEmail,
+      status: "confirmed",
+      confirmationCode: `LIB-${Math.floor(100000 + Math.random() * 900000)}`
     };
     
-    // Add reservation
-    setReservations([...reservations, newReservation]);
-    
-    // Close booking modal and show confirmation
-    setIsModalOpen(false);
-    setIsConfirmationOpen(true);
+    try {
+      // Call the API to create reservation
+      const response = await fetch('/api/reservations', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(reservationData),
+        credentials: 'include' // Include auth cookies
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to create reservation');
+      }
+      
+      const newReservation = await response.json();
+      
+      // Add reservation to local state
+      const clientReservation: Reservation = {
+        id: newReservation.id,
+        roomId: selectedRoom.id,
+        date: selectedDate,
+        startTime: setHours(new Date(selectedDate), selectedTimeSlot),
+        endTime: setHours(new Date(selectedDate), selectedTimeSlot + selectedDuration),
+        userName,
+        userEmail,
+        purpose: purpose || "Study session"
+      };
+      
+      setReservations([...reservations, clientReservation]);
+      
+      // Close booking modal and show confirmation
+      setIsModalOpen(false);
+      setIsConfirmationOpen(true);
+    } catch (error) {
+      console.error('Error creating reservation:', error);
+      toast({
+        title: "Reservation Failed",
+        description: "There was an error creating your reservation. Please try again.",
+        variant: "destructive"
+      });
+    }
   };
   
   const formatTimeSlot = (hour: number) => {
@@ -222,8 +274,11 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     // Reset form
     setSelectedRoom(null);
     setSelectedTimeSlot(null);
-    setUserName("");
-    setUserEmail("");
+    // Only reset user info if not logged in
+    if (!user) {
+      setUserName("");
+      setUserEmail("");
+    }
     setPurpose("");
     
     toast({
@@ -408,22 +463,26 @@ export default function RoomList({ selectedDate }: RoomListProps) {
               <label className="text-sm font-medium text-gray-700">Your Name</label>
               <input 
                 type="text"
-                className="w-full border border-gray-200 rounded-md px-3 py-2 h-10"
+                className={`w-full border border-gray-200 rounded-md px-3 py-2 h-10 ${user ? 'bg-gray-50' : ''}`}
                 value={userName}
                 onChange={(e) => setUserName(e.target.value)}
                 placeholder="Your full name"
+                disabled={!!user}
               />
+              {user && <p className="text-sm text-gray-500 mt-1">Auto-filled from your profile</p>}
             </div>
             
             <div className="space-y-2">
               <label className="text-sm font-medium text-gray-700">Email</label>
               <input 
                 type="email"
-                className="w-full border border-gray-200 rounded-md px-3 py-2 h-10"
+                className={`w-full border border-gray-200 rounded-md px-3 py-2 h-10 ${user ? 'bg-gray-50' : ''}`}
                 value={userEmail}
                 onChange={(e) => setUserEmail(e.target.value)}
                 placeholder="Your email address"
+                disabled={!!user}
               />
+              {user && <p className="text-sm text-gray-500 mt-1">Auto-filled from your profile</p>}
             </div>
             
             <div className="space-y-2">
