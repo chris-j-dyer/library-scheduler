@@ -6,12 +6,74 @@ import CalendarView from '@/components/CalendarView';
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
+// Create error-safe wrappers for components
+const SafeHeader = () => {
+  try {
+    return <Header />;
+  } catch (e) {
+    console.error("Error rendering Header:", e);
+    return (
+      <div className="bg-white shadow-sm py-4 px-6 mb-6">
+        <div className="text-xl font-semibold text-blue-600">Charlotte Mecklenburg Library</div>
+        <div className="text-sm text-red-500">Error loading header component</div>
+      </div>
+    );
+  }
+};
+
+const SafeFilterControls = () => {
+  try {
+    return <FilterControls />;
+  } catch (e) {
+    console.error("Error rendering FilterControls:", e);
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 mb-8">
+        <div className="text-red-500">Error loading filter controls</div>
+      </div>
+    );
+  }
+};
+
+const SafeInstructions = () => {
+  try {
+    return <Instructions />;
+  } catch (e) {
+    console.error("Error rendering Instructions:", e);
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 mb-8">
+        <div className="text-red-500">Error loading instructions</div>
+      </div>
+    );
+  }
+};
+
+const SafeCalendarView = () => {
+  try {
+    return <CalendarView />;
+  } catch (e) {
+    console.error("Error rendering CalendarView:", e);
+    return (
+      <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 mb-8">
+        <div className="text-red-500">Error loading calendar view - Please try refreshing the page</div>
+      </div>
+    );
+  }
+};
+
+// Simple loading spinner component
+const LoadingSpinner = () => (
+  <div className="flex items-center justify-center p-8">
+    <Loader2 className="h-8 w-8 animate-spin text-primary mr-2" />
+    <span>Loading...</span>
+  </div>
+);
+
 export default function Home() {
   const [error, setError] = useState<Error | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
   const { user } = useAuth();
   
-  // Add useEffect to verify component mounting
+  // Debug logging for component mounting and user data
   useEffect(() => {
     console.log("Home component mounted");
     console.log("User data in Home:", user);
@@ -19,7 +81,7 @@ export default function Home() {
     // Set loaded after a short delay to ensure all child components have time to initialize
     const timer = setTimeout(() => {
       setIsLoaded(true);
-    }, 500);
+    }, 800); // Increased timeout to 800ms
     
     return () => clearTimeout(timer);
   }, [user]);
@@ -57,11 +119,12 @@ export default function Home() {
     // Wrap the actual render in a try-catch to catch any errors during rendering
     return (
       <div className="bg-gray-50 text-gray-800 min-h-screen">
-        <Header />
+        <SafeHeader />
+        
         <main className="max-w-screen-xl mx-auto p-4">
-          <FilterControls />
-          <Instructions />
-          <CalendarView />
+          <SafeFilterControls />
+          <SafeInstructions />
+          <SafeCalendarView />
         </main>
         
         <footer className="bg-white border-t border-gray-100 py-6 mt-16">
