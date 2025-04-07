@@ -255,13 +255,16 @@ export default function RoomList({ selectedDate }: RoomListProps) {
             };
             
             // Use React Query's cache to update the data
-            queryClient.setQueryData(['reservations', formattedDate], (oldData: Reservation[] = []) => {
+            queryClient.setQueryData<Reservation[]>(['reservations', formattedDate], (oldData = []) => {
+              // Create a safe copy of oldData in case it's undefined
+              const currentData = Array.isArray(oldData) ? oldData : [];
+              
               // Only add if it's not already in the cache (to avoid duplicates)
-              if (!oldData.some(r => r.id === clientReservation.id)) {
+              if (!currentData.some(r => r.id === clientReservation.id)) {
                 console.log('Adding new reservation to React Query cache');
-                return [...oldData, clientReservation];
+                return [...currentData, clientReservation];
               }
-              return oldData;
+              return currentData;
             });
             
             // Show toast notification
@@ -415,8 +418,10 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       });
       
       // Update the React Query cache with the new reservation
-      queryClient.setQueryData(['reservations', formattedDate], (oldData: Reservation[] = []) => {
-        return [...oldData, clientReservation];
+      queryClient.setQueryData<Reservation[]>(['reservations', formattedDate], (oldData = []) => {
+        // Create a safe copy of oldData in case it's undefined
+        const currentData = Array.isArray(oldData) ? oldData : [];
+        return [...currentData, clientReservation];
       });
       
       // Also invalidate the query to ensure fresh data is fetched next time
@@ -477,7 +482,10 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       
       console.log(`Checking if hour ${currentHour} is bookable for room ${roomId}`);
       
-      const isReserved = reservations.some(reservation => {
+      // Make sure we have an array of reservations
+      const reservationArray = Array.isArray(reservations) ? reservations : [];
+      
+      const isReserved = reservationArray.some((reservation: Reservation) => {
         if (reservation.roomId !== roomId) {
           return false;
         }
