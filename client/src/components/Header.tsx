@@ -1,4 +1,4 @@
-import { BookOpen, Calendar, ChevronRight, Search, LogIn, Menu, User, Bell } from "lucide-react";
+import { BookOpen, Calendar, ChevronRight, Search, LogIn, Menu, User, Bell, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { 
   DropdownMenu, 
@@ -8,8 +8,24 @@ import {
   DropdownMenuSeparator, 
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
+import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { Link } from "wouter";
 
 export default function Header() {
+  const { user, logoutMutation } = useAuth();
+  const { toast } = useToast();
+  
+  const handleLogout = () => {
+    logoutMutation.mutate(undefined, {
+      onSuccess: () => {
+        toast({
+          title: "Logged out",
+          description: "You have been successfully logged out."
+        });
+      }
+    });
+  };
   return (
     <header className="bg-white shadow-sm py-4 px-6 mb-6">
       <div className="max-w-screen-xl mx-auto">
@@ -35,28 +51,41 @@ export default function Header() {
               <span>Notifications</span>
             </Button>
             
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="sm" className="text-gray-600 hover:text-blue-600 transition-colors px-3 py-2 rounded-md hover:bg-blue-50">
-                  <User className="h-4 w-4 mr-1" />
-                  <span>Account</span>
+            {user ? (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="text-gray-600 hover:text-blue-600 transition-colors px-3 py-2 rounded-md hover:bg-blue-50">
+                    <User className="h-4 w-4 mr-1" />
+                    <span>{user.name || user.username}</span>
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-56">
+                  <DropdownMenuLabel>My Account</DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <Link href="/profile">
+                    <DropdownMenuItem className="cursor-pointer">My Profile</DropdownMenuItem>
+                  </Link>
+                  <Link href="/profile">
+                    <DropdownMenuItem className="cursor-pointer">My Reservations</DropdownMenuItem>
+                  </Link>
+                  {user.isAdmin && (
+                    <DropdownMenuItem className="cursor-pointer">Admin Dashboard</DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-red-600">
+                    <LogOut className="h-4 w-4 mr-2" />
+                    Logout
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              <Link href="/auth">
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
+                  <LogIn className="h-4 w-4 mr-1" />
+                  <span>Login</span>
                 </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>My Account</DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="cursor-pointer">My Reservations</DropdownMenuItem>
-                <DropdownMenuItem className="cursor-pointer">My Checkouts</DropdownMenuItem>
-                <DropdownMenuItem className="cursor-pointer">Account Settings</DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="cursor-pointer text-red-600">Logout</DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-            
-            <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white">
-              <LogIn className="h-4 w-4 mr-1" />
-              <span>Login</span>
-            </Button>
+              </Link>
+            )}
           </div>
           
           <Button variant="ghost" size="icon" className="md:hidden">
@@ -66,9 +95,9 @@ export default function Header() {
         
         {/* Breadcrumb navigation */}
         <nav className="flex items-center text-sm mt-3">
-          <a href="#" className="text-blue-600 hover:text-blue-800 font-medium">Home</a>
+          <Link href="/" className="text-blue-600 hover:text-blue-800 font-medium">Home</Link>
           <ChevronRight className="h-3 w-3 mx-2 text-gray-400" />
-          <a href="#" className="text-blue-600 hover:text-blue-800">Room Reservations</a>
+          <Link href="/" className="text-blue-600 hover:text-blue-800">Room Reservations</Link>
           <ChevronRight className="h-3 w-3 mx-2 text-gray-400" />
           <span className="text-gray-600">South Boulevard Branch</span>
         </nav>
