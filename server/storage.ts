@@ -39,6 +39,7 @@ export interface IStorage {
   getReservation(id: number): Promise<Reservation | undefined>;
   getReservationsByRoom(roomId: number): Promise<Reservation[]>;
   getReservationsByRoomAndDate(roomId: number, date: Date): Promise<Reservation[]>;
+  getReservationsByDate(date: Date): Promise<Reservation[]>;
   getReservationsByUser(userId: number): Promise<Reservation[]>;
   getAllReservations(): Promise<Reservation[]>;
   createReservation(reservation: InsertReservation): Promise<Reservation>;
@@ -209,6 +210,13 @@ export class MemStorage implements IStorage {
       const resDate = new Date(res.reservationDate);
       return res.roomId === roomId && 
         format(resDate, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd');
+    });
+  }
+  
+  async getReservationsByDate(date: Date): Promise<Reservation[]> {
+    return Array.from(this.reservations.values()).filter(res => {
+      const resDate = new Date(res.reservationDate);
+      return format(resDate, 'yyyy-MM-dd') === format(date, 'yyyy-MM-dd');
     });
   }
   
@@ -625,6 +633,20 @@ export class DatabaseStorage implements IStorage {
         sql`${schema.reservations.reservationDate} >= ${startDate}`,
         sql`${schema.reservations.reservationDate} <= ${endDate}`
       )
+    );
+  }
+  
+  async getReservationsByDate(date: Date): Promise<Reservation[]> {
+    // Convert date to start and end of day
+    const startDate = new Date(date);
+    startDate.setHours(0, 0, 0, 0);
+    
+    const endDate = new Date(date);
+    endDate.setHours(23, 59, 59, 999);
+    
+    // Get all reservations for this date
+    return db.select().from(schema.reservations).where(
+      sql`DATE(${schema.reservations.reservationDate}) = DATE(${date})`
     );
   }
 

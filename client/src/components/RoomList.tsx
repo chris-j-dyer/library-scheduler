@@ -117,7 +117,7 @@ interface RoomListProps {
 export default function RoomList({ selectedDate }: RoomListProps) {
   const { toast } = useToast();
   const { user } = useAuth();
-  const [reservations, setReservations] = useState<Reservation[]>(initialReservations);
+  const [reservations, setReservations] = useState<Reservation[]>([]);
   const [selectedRoom, setSelectedRoom] = useState<Room | null>(null);
   const [selectedTimeSlot, setSelectedTimeSlot] = useState<number | null>(null);
   const [selectedDuration, setSelectedDuration] = useState<number>(1);
@@ -139,6 +139,47 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       setUserEmail("");
     }
   }, [user]);
+  
+  // Load existing reservations when component mounts or date changes
+  useEffect(() => {
+    // Function to load all room reservations for the selected date
+    const loadReservations = async () => {
+      try {
+        const formattedDate = format(selectedDate, 'yyyy-MM-dd');
+        const response = await fetch(`/api/reservations?date=${formattedDate}`);
+        
+        if (!response.ok) {
+          throw new Error('Failed to fetch reservations');
+        }
+        
+        const data = await response.json();
+        
+        // Map API reservations to client format
+        const clientReservations: Reservation[] = data.map((res: any) => ({
+          id: res.id,
+          roomId: res.roomId,
+          date: new Date(res.reservationDate),
+          startTime: new Date(res.startTime),
+          endTime: new Date(res.endTime),
+          userName: res.userId ? (res.userName || 'User') : res.guestName,
+          userEmail: res.userId ? (res.userEmail || '') : res.guestEmail,
+          purpose: res.purpose || 'Reservation'
+        }));
+        
+        // Update reservations state
+        setReservations(clientReservations);
+      } catch (error) {
+        console.error('Error fetching reservations:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load room reservations",
+          variant: "destructive"
+        });
+      }
+    };
+    
+    loadReservations();
+  }, [selectedDate, toast]);
   
   // Setup WebSocket connection
   useEffect(() => {

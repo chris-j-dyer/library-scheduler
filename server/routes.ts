@@ -229,12 +229,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // ---- Reservation Routes ----
   
-  // Get all reservations (admin only)
-  app.get("/api/reservations", isAdmin, async (_req, res) => {
+  // Get all reservations (admin only) or by date (for all users)
+  app.get("/api/reservations", async (req, res) => {
     try {
+      // If date param is provided, return reservations for that date
+      if (req.query.date) {
+        const date = new Date(req.query.date as string);
+        // Create a date string for comparison in PostgreSQL
+        const reservations = await storage.getReservationsByDate(date);
+        return res.status(200).json(reservations);
+      }
+      
+      // If no date and user is not admin, return unauthorized
+      if (!req.isAuthenticated() || !(req.user as any)?.isAdmin) {
+        return res.status(403).json({ error: "Unauthorized" });
+      }
+      
+      // Otherwise, return all reservations for admin users
       const reservations = await storage.getAllReservations();
       res.status(200).json(reservations);
     } catch (err) {
+      console.error("Error getting reservations:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   });
