@@ -354,6 +354,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
       
+      // Log that we sent the WebSocket message
+      console.log('WebSocket broadcast: new reservation created');
+      
       res.status(201).json(reservation);
     } catch (err) {
       console.error("Error in /api/reservations:", err);

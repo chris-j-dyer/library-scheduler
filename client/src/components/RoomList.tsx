@@ -180,6 +180,8 @@ export default function RoomList({ selectedDate }: RoomListProps) {
             
             // Only add if it's not from the current user (to avoid duplicates)
             if (!reservations.some(r => r.id === clientReservation.id)) {
+              // Immediately update the reservations state to reflect the new booking
+              // This forces a re-render which updates the calendar cells
               setReservations(prevReservations => [...prevReservations, clientReservation]);
               
               // Show toast notification
@@ -321,9 +323,8 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         purpose: purpose || "Study session"
       };
       
-      // Mark cell as unavailable in the UI by forcing a re-render of reservations
-      // The actual time slot will be marked as unavailable when reservations are updated
-      
+      // Manually force a re-render by creating a new reservations array that includes the just-made reservation
+      // This will cause the getRoomSchedule function to mark those time slots as unavailable
       setReservations([...reservations, clientReservation]);
       
       // Close booking modal and show confirmation
