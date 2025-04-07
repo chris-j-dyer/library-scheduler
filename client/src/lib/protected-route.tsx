@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from "react";
 import { useAuth } from "@/hooks/use-auth";
 import { Loader2 } from "lucide-react";
 import { Route, Redirect } from "wouter";
@@ -28,9 +29,18 @@ const ProtectedRouteErrorFallback = () => (
   </div>
 );
 
-// A simple wrapper for the component being rendered
+// A safer wrapper for the component being rendered
 const ComponentWrapper = ({ Component }: { Component: React.ComponentType<any> }) => {
+  const [hasRendered, setHasRendered] = useState(false);
+  
+  // Use useEffect to mark successful render
+  useEffect(() => {
+    console.log("ComponentWrapper mounted successfully");
+    setHasRendered(true);
+  }, []);
+  
   try {
+    console.log("Attempting to render component in ComponentWrapper");
     return <Component />;
   } catch (error) {
     console.error("Error in ComponentWrapper:", error);

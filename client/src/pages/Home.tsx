@@ -71,12 +71,13 @@ const LoadingSpinner = () => (
 export default function Home() {
   const [error, setError] = useState<Error | null>(null);
   const [isLoaded, setIsLoaded] = useState(false);
-  const { user } = useAuth();
+  const { user, isLoading } = useAuth();
   
   // Debug logging for component mounting and user data
   useEffect(() => {
     console.log("Home component mounted");
     console.log("User data in Home:", user);
+    console.log("Auth loading state in Home:", isLoading);
     
     // Set loaded after a short delay to ensure all child components have time to initialize
     const timer = setTimeout(() => {
@@ -84,7 +85,7 @@ export default function Home() {
     }, 800); // Increased timeout to 800ms
     
     return () => clearTimeout(timer);
-  }, [user]);
+  }, [user, isLoading]);
   
   // Error boundary pattern
   if (error) {
