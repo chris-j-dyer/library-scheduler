@@ -1,54 +1,58 @@
 import { Button } from "@/components/ui/button";
-import { Calendar, RefreshCcw } from "lucide-react";
+import { Calendar, RefreshCcw, Clock, Info, HelpCircle, CheckCircle2 } from "lucide-react";
 
 export default function Instructions() {
   return (
-    <div className="mb-6">
-      <h2 className="text-lg font-medium mb-4">To Reserve a Study Room</h2>
-      <ul className="list-disc pl-6 space-y-3">
-        <li>Use the drop down boxes above if you wish to change the location, "type" of room or by number of attendees.</li>
-        <li>
-          Use the 
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="border border-[#ddd] px-2 py-0.5 mx-1 bg-gray-100 rounded text-sm inline-flex items-center h-[26px] min-h-[26px]"
-          >
-            <Calendar className="h-4 w-4 mr-1" />
-            Go To Date
-          </Button>
-          button for a calendar view. STUDY ROOMS MAY ONLY BE BOOKED ONLINE OR IN-PERSON AT THE BRANCH ON THE DAY OF.
-        </li>
-        <li>
-          Click the 
-          <span className="info-btn mx-1">info</span>
-          box to view a room's details.
-        </li>
-        <li>Use the colored grid to select the start time of your meeting (this will default to a one-hour period).</li>
-        <li>You can adjust the end time in the drop-down box <span className="font-medium">below</span> the grid for up to 2 hours.</li>
-        <li>
-          If you want to change your time or start over, please click the 
-          <Button 
-            variant="outline" 
-            size="sm" 
-            className="border border-[#ddd] px-2 py-0.5 mx-1 bg-gray-100 rounded text-sm inline-flex items-center h-[26px] min-h-[26px]"
-          >
-            <RefreshCcw className="h-4 w-4 mr-1" />
-          </Button>
-          button below the grid. (Otherwise the time will be grayed out/blocked until the system refreshes).
-        </li>
-        <li>
-          When you are satisfied with your request, select the 
-          <Button 
-            size="sm" 
-            className="bg-blue-600 text-white px-2 py-1 rounded text-sm mx-1 h-[26px] min-h-[26px]"
-          >
-            Submit Times
-          </Button>
-          button. Thank you!
-        </li>
-      </ul>
-      <p className="mt-4 text-sm">If you need help completing the form, please contact the branch at 704-416-6400.</p>
+    <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 mb-8">
+      <h2 className="text-lg font-semibold text-gray-800 mb-4 flex items-center">
+        <Info className="h-5 w-5 mr-2 text-blue-600" />
+        How to Reserve a Study Room
+      </h2>
+      
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-4">
+        <div className="p-4 border border-gray-100 rounded-lg bg-blue-50">
+          <div className="flex items-center mb-3">
+            <div className="bg-blue-600 text-white rounded-full h-8 w-8 flex items-center justify-center mr-3">1</div>
+            <h3 className="font-medium text-gray-800">Select Date & Room</h3>
+          </div>
+          <p className="text-gray-600 text-sm">Choose the date and filter rooms based on your needs. Click on a room to view details.</p>
+        </div>
+        
+        <div className="p-4 border border-gray-100 rounded-lg bg-blue-50">
+          <div className="flex items-center mb-3">
+            <div className="bg-blue-600 text-white rounded-full h-8 w-8 flex items-center justify-center mr-3">2</div>
+            <h3 className="font-medium text-gray-800">Pick Time Slot</h3>
+          </div>
+          <p className="text-gray-600 text-sm">Click on an available time slot (blue) in the calendar grid. You can reserve for up to 2 hours.</p>
+        </div>
+        
+        <div className="p-4 border border-gray-100 rounded-lg bg-blue-50">
+          <div className="flex items-center mb-3">
+            <div className="bg-blue-600 text-white rounded-full h-8 w-8 flex items-center justify-center mr-3">3</div>
+            <h3 className="font-medium text-gray-800">Confirm Booking</h3>
+          </div>
+          <p className="text-gray-600 text-sm">Review your selection and click <span className="font-medium text-blue-600">Submit</span> to complete your reservation.</p>
+        </div>
+      </div>
+      
+      <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 flex items-start">
+        <HelpCircle className="h-5 w-5 text-yellow-500 mr-3 mt-0.5" />
+        <div>
+          <h4 className="font-medium text-gray-800">Important Note</h4>
+          <p className="text-sm text-gray-600">Study rooms may only be booked online or in-person at the branch on the day of your visit. For assistance, contact the branch at 704-416-6400.</p>
+        </div>
+      </div>
+      
+      <div className="mt-4 flex flex-wrap gap-3 justify-end items-center text-sm">
+        <div className="flex items-center">
+          <div className="w-4 h-4 bg-[#00a2ff] rounded-sm mr-2"></div>
+          <span className="text-gray-600">Available</span>
+        </div>
+        <div className="flex items-center">
+          <div className="w-4 h-4 bg-[#e0e0e0] rounded-sm mr-2"></div>
+          <span className="text-gray-600">Occupied</span>
+        </div>
+      </div>
     </div>
   );
 }
