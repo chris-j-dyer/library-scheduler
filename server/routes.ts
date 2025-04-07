@@ -296,6 +296,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Create new reservation
   app.post("/api/reservations", async (req, res) => {
     try {
+      // Log request body for debugging
+      console.log("Reservation request body:", JSON.stringify(req.body));
+      
       // Get reservation data from request body
       let reservationData = req.body;
       
@@ -304,18 +307,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         reservationData.userId = req.user.id;
       }
       
-      // Convert string dates to Date objects
+      // Convert string dates to Date objects and log the conversion
       if (typeof reservationData.reservationDate === 'string') {
         reservationData.reservationDate = new Date(reservationData.reservationDate);
+        console.log("Converted reservationDate:", reservationData.reservationDate);
       }
       
       if (typeof reservationData.startTime === 'string') {
         reservationData.startTime = new Date(reservationData.startTime);
+        console.log("Converted startTime:", reservationData.startTime);
       }
       
       if (typeof reservationData.endTime === 'string') {
         reservationData.endTime = new Date(reservationData.endTime);
+        console.log("Converted endTime:", reservationData.endTime);
       }
+      
+      // Log the processed data before validation
+      console.log("Processed reservation data:", {
+        roomId: reservationData.roomId,
+        userId: reservationData.userId,
+        guestName: reservationData.guestName,
+        guestEmail: reservationData.guestEmail,
+        reservationDate: reservationData.reservationDate,
+        startTime: reservationData.startTime,
+        endTime: reservationData.endTime,
+        purpose: reservationData.purpose,
+        status: reservationData.status,
+        confirmationCode: reservationData.confirmationCode
+      });
       
       // Validate data
       const validatedData = insertReservationSchema.parse(reservationData);
@@ -335,10 +355,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.status(201).json(reservation);
     } catch (err) {
+      console.error("Error in /api/reservations:", err);
+      
       if (err instanceof ZodError) {
+        console.error("ZodError details:", JSON.stringify(err.errors));
         return res.status(400).json({ error: err.errors });
       }
-      console.error(err);
+      
       res.status(500).json({ error: "Internal server error" });
     }
   });
