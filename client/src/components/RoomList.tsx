@@ -475,48 +475,70 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   
   // Function to check if a time slot is bookable (available and within booking constraints)
   const isTimeSlotBookable = (roomId: number, hour: number, consecutive: number = 1) => {
-    // Get the next 'consecutive' hours and check if they're all available
-    for (let i = 0; i < consecutive; i++) {
-      const currentHour = hour + i;
-      if (currentHour > 24) return false; // Past midnight
-      
-      console.log(`Checking if hour ${currentHour} is bookable for room ${roomId}`);
-      
-      // Make sure we have an array of reservations
-      const reservationArray = Array.isArray(reservations) ? reservations : [];
-      
-      const isReserved = reservationArray.some((reservation: Reservation) => {
-        if (reservation.roomId !== roomId) {
-          return false;
-        }
+    try {
+      // Get the next 'consecutive' hours and check if they're all available
+      for (let i = 0; i < consecutive; i++) {
+        const currentHour = hour + i;
+        if (currentHour > 24) return false; // Past midnight
         
-        // Normalize dates for comparison to handle timezone issues
-        const reservationDate = new Date(reservation.date);
-        const formattedReservationDate = format(reservationDate, 'yyyy-MM-dd');
-        const formattedSelectedDate = format(selectedDate, 'yyyy-MM-dd');
+        console.log(`Checking if hour ${currentHour} is bookable for room ${roomId}`);
         
-        // Check if the date matches the selected date using string comparison
-        if (formattedReservationDate !== formattedSelectedDate) {
-          console.log(`Date mismatch: reservation=${formattedReservationDate}, selected=${formattedSelectedDate}`);
-          return false;
-        }
+        // Make sure we have an array of reservations
+        const reservationArray = Array.isArray(reservations) ? reservations : [];
         
-        // Get hours for comparison
-        const startHour = reservation.startTime.getHours();
-        const endHour = reservation.endTime.getHours();
+        const isReserved = reservationArray.some((reservation: Reservation) => {
+          try {
+            if (reservation.roomId !== roomId) {
+              return false;
+            }
+            
+            // Check if reservation is undefined or missing properties
+            if (!reservation.date || !reservation.startTime || !reservation.endTime) {
+              console.log(`Reservation missing date properties for room ${roomId}`);
+              return false;
+            }
+            
+            // Normalize dates for comparison to handle timezone issues
+            const reservationDate = new Date(reservation.date);
+            const formattedReservationDate = format(reservationDate, 'yyyy-MM-dd');
+            const formattedSelectedDate = format(selectedDate, 'yyyy-MM-dd');
+            
+            // Check if the date matches the selected date using string comparison
+            if (formattedReservationDate !== formattedSelectedDate) {
+              console.log(`Date mismatch: reservation=${formattedReservationDate}, selected=${formattedSelectedDate}`);
+              return false;
+            }
+            
+            // Get hours for comparison - safely handle potential parsing issues
+            let startHour, endHour;
+            try {
+              startHour = new Date(reservation.startTime).getHours();
+              endHour = new Date(reservation.endTime).getHours();
+            } catch (err) {
+              console.error("Error parsing reservation times:", err);
+              return false;
+            }
+            
+            // Log the comparison for debugging
+            console.log(`Comparing hour ${currentHour} with reservation hours: ${startHour}-${endHour}`);
+            
+            // Check if current hour falls within the reservation time range
+            const isOverlapping = currentHour >= startHour && currentHour < endHour;
+            if (isOverlapping) {
+              console.log(`Hour ${currentHour} is reserved for room ${roomId}`);
+            }
+            return isOverlapping;
+          } catch (err) {
+            console.error("Error checking reservation:", err);
+            return false;
+          }
+        });
         
-        // Log the comparison for debugging
-        console.log(`Comparing hour ${currentHour} with reservation hours: ${startHour}-${endHour}`);
-        
-        // Check if current hour falls within the reservation time range
-        const isOverlapping = currentHour >= startHour && currentHour < endHour;
-        if (isOverlapping) {
-          console.log(`Hour ${currentHour} is reserved for room ${roomId}`);
-        }
-        return isOverlapping;
-      });
-      
-      if (isReserved) return false;
+        if (isReserved) return false;
+      }
+    } catch (err) {
+      console.error("Error in isTimeSlotBookable:", err);
+      return false;
     }
     
     return true;

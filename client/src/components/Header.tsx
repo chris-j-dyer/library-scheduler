@@ -98,7 +98,7 @@ export default function Header() {
                   <Link href="/profile">
                     <DropdownMenuItem className="cursor-pointer">My Reservations</DropdownMenuItem>
                   </Link>
-                  {user && user.isAdmin && (
+                  {user && user.isAdmin === true && (
                     <DropdownMenuItem className="cursor-pointer">Admin Dashboard</DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />
