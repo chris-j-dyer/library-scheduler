@@ -146,6 +146,8 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     const loadReservations = async () => {
       try {
         const formattedDate = format(selectedDate, 'yyyy-MM-dd');
+        console.log(`Fetching reservations for date: ${formattedDate}`);
+        
         const response = await fetch(`/api/reservations?date=${formattedDate}`);
         
         if (!response.ok) {
@@ -153,18 +155,27 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         }
         
         const data = await response.json();
+        console.log('Reservations data received:', data);
         
         // Map API reservations to client format
-        const clientReservations: Reservation[] = data.map((res: any) => ({
-          id: res.id,
-          roomId: res.roomId,
-          date: new Date(res.reservationDate),
-          startTime: new Date(res.startTime),
-          endTime: new Date(res.endTime),
-          userName: res.userId ? (res.userName || 'User') : res.guestName,
-          userEmail: res.userId ? (res.userEmail || '') : res.guestEmail,
-          purpose: res.purpose || 'Reservation'
-        }));
+        const clientReservations: Reservation[] = data.map((res: any) => {
+          // Ensure we have proper Date objects for all date fields
+          const reservation = {
+            id: res.id,
+            roomId: res.roomId,
+            date: new Date(res.reservationDate),
+            startTime: new Date(res.startTime),
+            endTime: new Date(res.endTime),
+            userName: res.userId ? (res.userName || 'User') : res.guestName,
+            userEmail: res.userId ? (res.userEmail || '') : res.guestEmail,
+            purpose: res.purpose || 'Reservation'
+          };
+          
+          console.log(`Processed reservation for room ${reservation.roomId} on ${format(reservation.date, 'yyyy-MM-dd')} at ${format(reservation.startTime, 'HH:mm')}`);
+          return reservation;
+        });
+        
+        console.log(`Loaded ${clientReservations.length} reservations for date ${formattedDate}`);
         
         // Update reservations state
         setReservations(clientReservations);

@@ -637,17 +637,24 @@ export class DatabaseStorage implements IStorage {
   }
   
   async getReservationsByDate(date: Date): Promise<Reservation[]> {
-    // Convert date to start and end of day
-    const startDate = new Date(date);
-    startDate.setHours(0, 0, 0, 0);
+    // Format the date as YYYY-MM-DD for comparison
+    const formattedDate = format(date, 'yyyy-MM-dd');
+    console.log(`Looking for reservations on date: ${formattedDate}`);
     
-    const endDate = new Date(date);
-    endDate.setHours(23, 59, 59, 999);
+    // Get all reservations where the reservationDate matches the formatted date
+    // PostgreSQL stores dates in a format that may require explicit conversion
+    const reservations = await db.select().from(schema.reservations);
     
-    // Get all reservations for this date
-    return db.select().from(schema.reservations).where(
-      sql`DATE(${schema.reservations.reservationDate}) = DATE(${date})`
-    );
+    // Filter reservations in JavaScript since PostgreSQL date comparison can be tricky
+    const filtered = reservations.filter(res => {
+      // Convert the database date to the same format
+      const resDate = format(new Date(res.reservationDate), 'yyyy-MM-dd');
+      console.log(`Comparing reservation date ${resDate} with ${formattedDate}`);
+      return resDate === formattedDate;
+    });
+    
+    console.log(`Found ${filtered.length} reservations for ${formattedDate}`);
+    return filtered;
   }
 
   async getReservationsByUser(userId: number): Promise<Reservation[]> {
