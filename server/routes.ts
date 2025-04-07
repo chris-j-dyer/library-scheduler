@@ -234,9 +234,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // If date param is provided, return reservations for that date
       if (req.query.date) {
-        const date = new Date(req.query.date as string);
+        const dateStr = req.query.date as string;
+        console.log(`API /api/reservations received date parameter: ${dateStr}`);
+        const date = new Date(dateStr);
+        
         // Create a date string for comparison in PostgreSQL
         const reservations = await storage.getReservationsByDate(date);
+        console.log(`Found ${reservations.length} reservations for date ${dateStr}`);
+        
         return res.status(200).json(reservations);
       }
       
@@ -250,6 +255,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(200).json(reservations);
     } catch (err) {
       console.error("Error getting reservations:", err);
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+  
+  // Add a dedicated endpoint for getting reservations by date
+  // This should come BEFORE the /:id endpoint to avoid conflicts
+  app.get("/api/reservations/by-date/:date", async (req, res) => {
+    try {
+      const dateStr = req.params.date;
+      console.log(`API /api/reservations/by-date received date parameter: ${dateStr}`);
+      
+      // Create a Date object from the provided date string
+      const date = new Date(dateStr);
+      
+      // Get reservations for this date
+      const reservations = await storage.getReservationsByDate(date);
+      console.log(`Found ${reservations.length} reservations for date ${dateStr}`);
+      
+      res.status(200).json(reservations);
+    } catch (err) {
+      console.error(`Error in /api/reservations/by-date:`, err);
       res.status(500).json({ error: "Internal server error" });
     }
   });

@@ -148,9 +148,11 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         const formattedDate = format(selectedDate, 'yyyy-MM-dd');
         console.log(`Fetching reservations for date: ${formattedDate}`);
         
-        const response = await fetch(`/api/reservations?date=${formattedDate}`);
+        // Use the new dedicated endpoint for date-based reservations
+        const response = await fetch(`/api/reservations/by-date/${formattedDate}`);
         
         if (!response.ok) {
+          console.error(`Error response from server: ${response.status} ${response.statusText}`);
           throw new Error('Failed to fetch reservations');
         }
         
@@ -159,6 +161,13 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         
         // Map API reservations to client format
         const clientReservations: Reservation[] = data.map((res: any) => {
+          // Log the raw date values from the server
+          console.log(`Processing reservation #${res.id}:`, {
+            reservationDate: res.reservationDate,
+            startTime: res.startTime,
+            endTime: res.endTime
+          });
+          
           // Ensure we have proper Date objects for all date fields
           const reservation = {
             id: res.id,
@@ -274,41 +283,17 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     
     // Start at 2pm (14:00) and go until 11pm (23:00)
     for (let hour = 14; hour <= 24; hour++) {
-      // Log the reservations we're checking against for debugging
-      console.log(`Checking hour ${hour} for room ${roomId}`);
-      reservations.forEach(res => {
-        if (res.roomId === roomId) {
-          console.log(`Reservation: id=${res.id}, start=${format(res.startTime, 'HH:mm')}, end=${format(res.endTime, 'HH:mm')}`);
-        }
-      });
-      
-      // Check if there's a reservation for this room at this time on the selected date
-      // We need to handle the case where the stored date and selected date might have different timezones
-      // by normalizing both to just compare hours
-      const isReserved = reservations.some(reservation => {
-        if (reservation.roomId !== roomId) {
-          return false;
-        }
-        
-        // Check if the date matches the selected date by comparing the date portion only
-        if (!isSameDay(new Date(reservation.date), selectedDate)) {
-          return false;
-        }
-        
-        // Get hours for comparison
-        const startHour = reservation.startTime.getHours();
-        const endHour = reservation.endTime.getHours();
-        
-        console.log(`Comparing hour ${hour} with reservation hours: ${startHour}-${endHour}`);
-        
-        // Check if current hour falls within the reservation time range
-        return hour >= startHour && hour < endHour;
-      });
+      // Use the more robust isTimeSlotBookable function to check availability
+      // This function properly normalizes dates and handles date comparison more reliably
+      const isAvailable = isTimeSlotBookable(roomId, hour);
       
       timeSlots.push({
         hour,
-        isAvailable: !isReserved
+        isAvailable
       });
+      
+      // Log the schedule for debugging
+      console.log(`Room ${roomId}, Hour ${hour}: ${isAvailable ? 'Available' : 'Occupied'}`);
     }
     
     return timeSlots;
@@ -464,13 +449,21 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       const currentHour = hour + i;
       if (currentHour > 24) return false; // Past midnight
       
+      console.log(`Checking if hour ${currentHour} is bookable for room ${roomId}`);
+      
       const isReserved = reservations.some(reservation => {
         if (reservation.roomId !== roomId) {
           return false;
         }
         
-        // Check if the date matches the selected date
-        if (!isSameDay(new Date(reservation.date), selectedDate)) {
+        // Normalize dates for comparison to handle timezone issues
+        const reservationDate = new Date(reservation.date);
+        const formattedReservationDate = format(reservationDate, 'yyyy-MM-dd');
+        const formattedSelectedDate = format(selectedDate, 'yyyy-MM-dd');
+        
+        // Check if the date matches the selected date using string comparison
+        if (formattedReservationDate !== formattedSelectedDate) {
+          console.log(`Date mismatch: reservation=${formattedReservationDate}, selected=${formattedSelectedDate}`);
           return false;
         }
         
@@ -478,8 +471,15 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         const startHour = reservation.startTime.getHours();
         const endHour = reservation.endTime.getHours();
         
+        // Log the comparison for debugging
+        console.log(`Comparing hour ${currentHour} with reservation hours: ${startHour}-${endHour}`);
+        
         // Check if current hour falls within the reservation time range
-        return currentHour >= startHour && currentHour < endHour;
+        const isOverlapping = currentHour >= startHour && currentHour < endHour;
+        if (isOverlapping) {
+          console.log(`Hour ${currentHour} is reserved for room ${roomId}`);
+        }
+        return isOverlapping;
       });
       
       if (isReserved) return false;

@@ -639,14 +639,20 @@ export class DatabaseStorage implements IStorage {
   }
   
   async getReservationsByDate(date: Date): Promise<Reservation[]> {
-    // Format the date as YYYY-MM-DD for comparison
-    const formattedDate = format(date, 'yyyy-MM-dd');
-    console.log(`Looking for reservations on date: ${formattedDate}`);
+    // Convert date to start and end of day for a range query
+    const startDate = new Date(date);
+    startDate.setHours(0, 0, 0, 0);
     
-    // Use SQL to directly compare the dates in the database
-    // This uses PostgreSQL's DATE() function to extract just the date part
+    const endDate = new Date(date);
+    endDate.setHours(23, 59, 59, 999);
+    
+    // Format dates for logging
+    const formattedDate = format(date, 'yyyy-MM-dd');
+    console.log(`Looking for reservations between: ${format(startDate, 'yyyy-MM-dd HH:mm:ss')} and ${format(endDate, 'yyyy-MM-dd HH:mm:ss')}`);
+    
+    // Use a date range query with PostgreSQL's BETWEEN operator for more reliable results
     const reservations = await db.select().from(schema.reservations)
-      .where(sql`DATE(${schema.reservations.reservationDate}) = ${formattedDate}`);
+      .where(sql`${schema.reservations.reservationDate} BETWEEN ${startDate} AND ${endDate}`);
     
     console.log(`Found ${reservations.length} reservations for ${formattedDate}`);
     
@@ -658,6 +664,8 @@ export class DatabaseStorage implements IStorage {
         - Start: ${format(new Date(res.startTime), 'HH:mm:ss')}
         - End: ${format(new Date(res.endTime), 'HH:mm:ss')}`);
       });
+    } else {
+      console.log(`No reservations found for date: ${formattedDate}`);
     }
     
     return reservations;
