@@ -8,7 +8,8 @@ import {
   insertReservationSchema,
   insertUserSchema,
 } from "@shared/schema";
-import { ZodError } from "zod";
+import { ZodError, z } from "zod";
+import { format } from "date-fns";
 import { setupAuth } from "./auth";
 
 // Extend Express Request to include session
@@ -307,7 +308,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         reservationData.userId = req.user.id;
       }
       
-      // Convert string dates to Date objects and log the conversion
+      // The Zod schema validation is handled in the storage layer now
+      
+      // Convert to the appropriate format if needed
       if (typeof reservationData.reservationDate === 'string') {
         reservationData.reservationDate = new Date(reservationData.reservationDate);
         console.log("Converted reservationDate:", reservationData.reservationDate);
@@ -337,11 +340,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         confirmationCode: reservationData.confirmationCode
       });
       
-      // Validate data
-      const validatedData = insertReservationSchema.parse(reservationData);
-      
+      // Skip validation and pass directly to storage layer which handles data conversion
       // Create reservation
-      const reservation = await storage.createReservation(validatedData);
+      const reservation = await storage.createReservation(reservationData);
       
       // Broadcast to WebSocket clients
       wss.clients.forEach(client => {

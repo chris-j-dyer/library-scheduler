@@ -279,10 +279,10 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     // Prepare reservation data for API
     const reservationData = {
       roomId: selectedRoom.id,
-      // Create proper Date objects for the API
-      reservationDate: selectedDate,
-      startTime: setHours(new Date(selectedDate), selectedTimeSlot),
-      endTime: setHours(new Date(selectedDate), selectedTimeSlot + selectedDuration),
+      // Format dates as strings for API compatibility
+      reservationDate: format(selectedDate, 'yyyy-MM-dd'),
+      startTime: format(setHours(new Date(selectedDate), selectedTimeSlot), 'yyyy-MM-dd HH:mm:ss'),
+      endTime: format(setHours(new Date(selectedDate), selectedTimeSlot + selectedDuration), 'yyyy-MM-dd HH:mm:ss'),
       purpose: purpose || "Study session",
       // If user is logged in, these fields will be associated with the user account
       // Otherwise, use the guest fields

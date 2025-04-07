@@ -224,10 +224,20 @@ export class MemStorage implements IStorage {
     const id = this.reservationCurrentId++;
     const now = new Date();
     
-    // Convert Date to string format for reservationDate if needed
-    let reservationDate = typeof reservation.reservationDate === 'string'
+    // Handle both string and Date objects for all date fields
+    const reservationDate = typeof reservation.reservationDate === 'string'
       ? reservation.reservationDate
       : format(reservation.reservationDate as Date, 'yyyy-MM-dd');
+    
+    // Convert startTime to Date if it's a string
+    const startTime = typeof reservation.startTime === 'string'
+      ? new Date(reservation.startTime)
+      : reservation.startTime;
+      
+    // Convert endTime to Date if it's a string
+    const endTime = typeof reservation.endTime === 'string'
+      ? new Date(reservation.endTime)
+      : reservation.endTime;
     
     // Generate a random confirmation code if not provided
     const confirmationCode = reservation.confirmationCode || 
@@ -240,8 +250,8 @@ export class MemStorage implements IStorage {
       guestName: reservation.guestName || null,
       guestEmail: reservation.guestEmail || null,
       reservationDate: reservationDate,
-      startTime: reservation.startTime,
-      endTime: reservation.endTime,
+      startTime: startTime, // Use converted startTime
+      endTime: endTime, // Use converted endTime
       purpose: reservation.purpose || null,
       status: reservation.status || "confirmed",
       confirmationCode,
