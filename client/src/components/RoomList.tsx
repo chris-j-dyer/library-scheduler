@@ -197,6 +197,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   const [userName, setUserName] = useState(user ? (user.name || user.username) : "");
   const [userEmail, setUserEmail] = useState(user ? (user.email || "") : "");
   const [purpose, setPurpose] = useState("");
+  const [localDate, setLocalDate] = useState(new Date(selectedDate));
   const websocketRef = useRef<WebSocket | null>(null);
   
   // Update user info when user changes (logs in/out)
@@ -304,6 +305,42 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   // Extract reservations from query result
   const reservations = reservationsQuery.data || [];
   
+  // Function to mark a reservation in the availability map
+  const markReservationSlots = useCallback((reservation: any, force = false) => {
+    const resDate = new Date(reservation.reservationDate);
+    const startTime = new Date(reservation.startTime);
+    const endTime = new Date(reservation.endTime);
+    
+    // Only process if it's for the selected date
+    if (!isSameDay(resDate, selectedDate) && !force) {
+      return false;
+    }
+    
+    // Get hours for this reservation
+    const startHour = startTime.getHours();
+    const endHour = endTime.getHours();
+    const roomId = reservation.roomId;
+    
+    // Generate a list of slots that are now occupied
+    const occupiedSlots = [];
+    for (let hour = startHour; hour < endHour; hour++) {
+      // Generate unique ID for this slot
+      const dateStr = format(selectedDate, 'yyyyMMdd');
+      const paddedRoomId = roomId.toString().padStart(2, '0');
+      const paddedHour = hour.toString().padStart(2, '0');
+      const slotId = `${paddedRoomId}${paddedHour}${dateStr}`;
+      occupiedSlots.push(slotId);
+    }
+    
+    // Log the occupied slots
+    if (occupiedSlots.length > 0) {
+      console.log(`Marking following slots as occupied from reservation #${reservation.id}:`, occupiedSlots);
+      return true;
+    }
+    
+    return false;
+  }, [selectedDate]);
+  
   // Setup WebSocket connection
   useEffect(() => {
     // Create WebSocket connection
@@ -331,22 +368,45 @@ export default function RoomList({ selectedDate }: RoomListProps) {
           
           // If this reservation is for the selected date, update our data
           if (isSameDay(reservationDate, selectedDate)) {
-            // Force a refresh of the reservations query to get the latest data
-            // This is better than manually updating state as it ensures we have the
-            // complete correct state from the server
-            console.log('WebSocket triggered reservation query invalidation');
+            console.log('WebSocket received new reservation for selected date:', reservation);
             
-            // Invalidate the query for the selected date
-            const dateStr = format(selectedDate, 'yyyy-MM-dd');
+            // First update the query cache with the new reservation
+            queryClient.setQueryData(
+              ['/api/reservations/by-date', format(selectedDate, 'yyyy-MM-dd')],
+              (oldData: any[] | undefined) => {
+                if (!oldData) return [reservation];
+                
+                // Add the new reservation if it's not already there
+                const exists = oldData.some(r => r.id === reservation.id);
+                if (!exists) {
+                  console.log(`Adding reservation #${reservation.id} to cache`);
+                  return [...oldData, reservation];
+                }
+                return oldData;
+              }
+            );
+            
+            // Then immediately invalidate to force a refetch
             queryClient.invalidateQueries({ 
-              queryKey: ['/api/reservations/by-date', dateStr] 
+              queryKey: ['/api/reservations/by-date', format(selectedDate, 'yyyy-MM-dd')] 
             });
+            
+            // Mark this reservation's slots
+            const slotsChanged = markReservationSlots(reservation);
             
             // Show toast notification
             toast({
               title: "New Reservation",
               description: `Room ${reservation.roomId} has been reserved`,
             });
+            
+            // Force a refresh if slots were changed
+            if (slotsChanged) {
+              setTimeout(() => {
+                // Force component to re-render
+                setLocalDate(new Date(selectedDate));
+              }, 500);
+            }
           }
         } else if (message.type === 'cancelled_reservation') {
           // Similar handling for cancelled reservations
@@ -355,10 +415,15 @@ export default function RoomList({ selectedDate }: RoomListProps) {
           
           if (isSameDay(reservationDate, selectedDate)) {
             // Invalidate the query for the selected date
-            const dateStr = format(selectedDate, 'yyyy-MM-dd');
             queryClient.invalidateQueries({ 
-              queryKey: ['/api/reservations/by-date', dateStr] 
+              queryKey: ['/api/reservations/by-date', format(selectedDate, 'yyyy-MM-dd')] 
             });
+            
+            // Force a refresh
+            setTimeout(() => {
+              // Force component to re-render
+              setLocalDate(new Date(selectedDate));
+            }, 500);
             
             toast({
               title: "Reservation Cancelled",
@@ -387,7 +452,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         socket.close();
       }
     };
-  }, [selectedDate, queryClient, toast]);
+  }, [selectedDate, queryClient, toast, markReservationSlots]);
   
   // Create a direct room+timeslot mapping for each reservation
   const buildAvailabilityMap = useMemo(() => {
@@ -627,6 +692,15 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       queryClient.invalidateQueries({ 
         queryKey: ['/api/reservations/by-date', formattedDate] 
       });
+      
+      // Mark this reservation's slots
+      markReservationSlots(newReservation, true);
+      
+      // Force a rerender to update the UI
+      setTimeout(() => {
+        // Create a new date object to force a rerender of the component
+        setLocalDate(new Date(selectedDate));
+      }, 500);
       
       // Close booking modal and show confirmation
       setIsModalOpen(false);
