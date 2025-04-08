@@ -1,0 +1,50 @@
+Fix the time slot bubble color issue by addressing these specific problems I've identified:
+
+1. STATE INITIALIZATION PROBLEM: 
+   Add a proper initial state for reservations. At the top of your component:
+   const [reservations, setReservations] = useState([]);
+
+2. API RESPONSE STRUCTURE MISMATCH:
+   The current code assumes a specific structure from your API. Check what your API actually returns by adding this logging:
+   console.log("API response structure:", data);
+   Then make sure you're accessing the correct property (data.reservations vs data.data vs data.results)
+
+3. IMMEDIATE UI FEEDBACK:
+   When a user clicks to reserve, update the UI immediately before waiting for API response:
+   - In your handleTimeSlotClick or reservation function, add:
+   
+   // At the beginning of the function
+   const currentElement = e.target;
+   currentElement.style.backgroundColor = '#808080';
+   currentElement.classList.add('reserved');
+   
+   // Then handle the API call
+
+4. CONSOLE VISIBILITY:
+   Add more console logs to track the exact flow of data:
+   console.log("Current reservations:", reservations);
+   console.log("Is this slot reserved?", isReserved, "for room:", roomId, "time:", timeSlotId);
+   console.log("After adding reservation:", newState);
+
+5. COMPARISON LOGIC FIX:
+   Your comparison logic might be failing. Simplify it:
+   
+   const isReserved = reservations.some(reservation => {
+     // Simple non-strict equality comparison with explicit conversion to string
+     const roomMatch = String(reservation.roomId) === String(room.id);
+     const timeMatch = String(reservation.timeSlotId) === String(timeSlot.id);
+     console.log(`Comparing: ${reservation.roomId}==${room.id}? ${roomMatch}, ${reservation.timeSlotId}==${timeSlot.id}? ${timeMatch}`);
+     return roomMatch && timeMatch;
+   });
+
+6. FORCE RENDER UPDATE:
+   Add a way to force re-render after state changes:
+   const [updateTrigger, setUpdateTrigger] = useState(0);
+   
+   // Then in your reservation handler:
+   setReservations(prev => [...prev, newReservation]);
+   setUpdateTrigger(prev => prev + 1);
+   
+   // And use updateTrigger in your component's dependency arrays
+
+Focus on these specific fixes rather than trying to rewrite large portions of code.

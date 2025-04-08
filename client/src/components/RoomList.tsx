@@ -310,23 +310,32 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     });
   }
   
-  // 4. FIX state management for reservations:
-  // Create a state variable to store all reservations
+  // 1. STATE INITIALIZATION PROBLEM:
+  // Create a state variable to store all reservations 
   const [reservations, setReservations] = useState<Reservation[]>([]);
   
-  // Function to check if a specific slot is reserved (STEP 2: IMPLEMENT proper reservation check)
+  // 6. FORCE RENDER UPDATE: Add a way to force re-render after state changes
+  const [updateTrigger, setUpdateTrigger] = useState(0);
+  
+  // 5. COMPARISON LOGIC FIX: Simplify the comparison logic
   const isSlotReserved = (roomId: number, hour: number) => {
+    // 4. CONSOLE VISIBILITY: Add more console logs to track the exact flow of data
+    console.log("Checking if slot is reserved:", 
+      "roomId=", roomId, 
+      "hour=", hour, 
+      "Current reservations:", reservations.length);
+    
     // Use the .some() array method to check if ANY reservation matches this slot
-    return reservations.some(reservation => {
+    const isReserved = reservations.some(reservation => {
       // Skip cancelled reservations
       if (reservation.status === 'cancelled') return false;
       
-      // Check if this reservation is for this room
-      if (reservation.roomId != roomId) return false; // Use loose equality (==) as instructed
+      // Explicitly convert IDs to strings for comparison as instructed
+      const roomMatch = String(reservation.roomId) === String(roomId);
       
       // Check if the date matches
       const resDate = reservation.date || new Date(reservation.reservationDate);
-      if (!isSameDay(resDate, selectedDate)) return false;
+      const dateMatch = isSameDay(resDate, selectedDate);
       
       // Get the time range
       const startTime = typeof reservation.startTime === 'string'
@@ -337,17 +346,30 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         ? new Date(reservation.endTime)
         : reservation.endTime;
       
-      // Get the hours
+      // Get the hours and check if this hour falls within the range
       const startHour = startTime.getHours();
       const endHour = endTime.getHours();
+      const timeMatch = hour >= startHour && hour < endHour;
       
-      // Check if this hour falls within the reservation's time range
-      return hour >= startHour && hour < endHour;
+      // Detailed console logging for each comparison step
+      console.log(`Comparing reservation #${reservation.id}:`,
+                 `roomMatch=${roomMatch} (${reservation.roomId}==${roomId})`,
+                 `dateMatch=${dateMatch}`,
+                 `timeMatch=${timeMatch} (${hour} in ${startHour}-${endHour}?)`);
+      
+      // Only return true if all three conditions match
+      return roomMatch && dateMatch && timeMatch;
     });
+    
+    console.log(`Slot room=${roomId}, hour=${hour} is ${isReserved ? 'RESERVED' : 'AVAILABLE'}`);
+    return isReserved;
   };
   
   // 5. VERIFY the component re-renders after state change - setup useEffect for initial data load
   useEffect(() => {
+    // 2. API RESPONSE STRUCTURE MISMATCH: Add logging to check API response structure
+    console.log("API response structure:", reservationsQuery.data);
+    
     if (reservationsQuery.data) {
       console.log("Setting reservations data:", reservationsQuery.data.length, "items");
       
@@ -367,7 +389,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         console.log(`Loaded reservation #${reservation.id}: room=${reservation.roomId}, date=${reservation.reservationDate}, time=${startTime.getHours()}-${endTime.getHours()}, status=${reservation.status}`);
       });
     }
-  }, [reservationsQuery.data, selectedDate]);
+  }, [reservationsQuery.data, selectedDate, updateTrigger]); // Add updateTrigger to dependencies
   
   // Function to mark a reservation in the availability map
   const markReservationSlots = useCallback((reservation: any, force = false) => {
@@ -750,6 +772,22 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       return;
     }
     
+    // 3. IMMEDIATE UI FEEDBACK: When a user clicks to reserve, update the UI immediately
+    if (event) {
+      // Get the actual calendar cell that was clicked
+      const currentElement = event.currentTarget as HTMLElement;
+      const cellDiv = currentElement.querySelector('.calendar-cell');
+      if (cellDiv) {
+        // Immediately change the appearance to give visual feedback
+        cellDiv.classList.remove('available');
+        cellDiv.classList.add('occupied');
+        (cellDiv as HTMLElement).style.backgroundColor = '#808080';
+        console.log('Immediate visual feedback applied to clicked cell');
+      } else {
+        console.log('Could not find .calendar-cell div to update appearance');
+      }
+    }
+    
     const room = roomsData.find(r => r.id === roomId);
     if (room) {
       // Store the DOM element that was clicked
@@ -883,8 +921,13 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       // CRITICAL: Immediately update the reservations state to include this new reservation
       setReservations(prevReservations => {
         console.log('Adding new reservation to state:', clientReservation);
-        return [...prevReservations, clientReservation];
+        const newState = [...prevReservations, clientReservation];
+        console.log("After adding reservation:", newState);
+        return newState;
       });
+      
+      // 6. FORCE RENDER UPDATE: Increment the trigger to force component re-render
+      setUpdateTrigger(prev => prev + 1);
       
       // Also invalidate the query to ensure it will be refetched next time
       // This ensures data consistency in case the server's response is different
