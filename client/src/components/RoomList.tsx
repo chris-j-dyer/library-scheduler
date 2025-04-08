@@ -135,50 +135,6 @@ const roomsData: Room[] = [
   }
 ];
 
-// Sample reservations (would typically come from API/database)
-const initialReservations: Reservation[] = [
-  {
-    id: 1,
-    roomId: 1,
-    userId: null,
-    guestName: "John Smith",
-    guestEmail: "john@example.com",
-    reservationDate: "2025-04-07", // ISO format for DB
-    startTime: setHours(new Date(2025, 3, 7), 14), // 2pm
-    endTime: setHours(new Date(2025, 3, 7), 20), // 8pm
-    purpose: "Study Group",
-    status: "confirmed",
-    confirmationCode: "LIB-123456",
-    notes: null,
-    createdAt: new Date(),
-    updatedAt: null,
-    // Client-side properties for UI
-    date: new Date(2025, 3, 7),
-    userName: "John Smith",
-    userEmail: "john@example.com"
-  },
-  {
-    id: 2,
-    roomId: 2,
-    userId: null,
-    guestName: "Sarah Johnson",
-    guestEmail: "sarah@example.com",
-    reservationDate: "2025-04-07", // ISO format for DB
-    startTime: setHours(new Date(2025, 3, 7), 14),
-    endTime: setHours(new Date(2025, 3, 7), 20),
-    purpose: "Research",
-    status: "confirmed",
-    confirmationCode: "LIB-789012",
-    notes: null,
-    createdAt: new Date(),
-    updatedAt: null,
-    // Client-side properties for UI
-    date: new Date(2025, 3, 7),
-    userName: "Sarah Johnson", 
-    userEmail: "sarah@example.com"
-  }
-];
-
 // Define props for RoomList component
 interface RoomListProps {
   selectedDate: Date;
@@ -482,7 +438,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         socket.close();
       }
     };
-  }, [localDate, queryClient, toast, markReservationSlots]);
+  }, [localDate, queryClient, toast, markReservationSlots, generateSlotId]);
   
   // Create a direct room+timeslot mapping for each reservation
   const buildAvailabilityMap = useMemo(() => {
@@ -569,36 +525,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     // Otherwise use the regular availability map
     return buildAvailabilityMap.isSlotAvailable(roomId, hour);
   };
-  
-  // Generate schedule for each room
-  const getRoomSchedule = (roomId: number) => {
-    // Create array of time slots from 9am to 8pm
-    const timeSlots: TimeSlot[] = [];
-    
-    // Start at 9am (9:00) and go until 8pm (20:00)
-    for (let hour = 9; hour <= 20; hour++) {
-      // Check if it's a weekend and time is after 5pm - library closes earlier on weekends
-      const isWeekend = [0, 6].includes(selectedDate.getDay()); // 0 = Sunday, 6 = Saturday
-      const isAfterWeekendHours = isWeekend && hour >= 17; // 5pm and later on weekends
-      
-      // Get availability from our pre-computed map
-      const isAvailable = !isAfterWeekendHours && isTimeSlotAvailable(roomId, hour);
-      
-      timeSlots.push({
-        hour,
-        isAvailable
-      });
-      
-      // Log the schedule for debugging
-      console.log(`Room ${roomId}, Hour ${hour}: ${isAvailable ? 'Available' : 'Occupied'}`);
-    }
-    
-    // Log all unavailable slots for debugging
-    console.log("All unavailable slots:", buildAvailabilityMap.getUnavailableSlots());
-    
-    return timeSlots;
-  };
-  
+
   // Handler for time slot selection
   const handleTimeSlotClick = (room: Room, hour: number) => {
     // Check if the slot is available
@@ -756,123 +683,97 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       });
     }
   };
-  
-  return (
-    <div className="flex flex-col mt-6">
-      <h2 className="text-2xl font-semibold mb-4">Available Rooms</h2>
-      
-      {/* Loading state */}
-      {reservationsQuery.isLoading && (
-        <div className="flex items-center justify-center h-64">
-          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-        </div>
-      )}
-      
-      {/* Error state */}
-      {reservationsQuery.isError && (
-        <div className="bg-red-50 border border-red-200 rounded-md p-4 text-red-700 mb-6">
-          <p className="font-medium">Error loading reservations</p>
-          <p className="text-sm">Please try again or contact the library staff if the problem persists.</p>
-        </div>
-      )}
-      
-      {/* Room List */}
-      {!reservationsQuery.isLoading && !reservationsQuery.isError && (
-        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-1 w-full">
-          {roomsData.map(room => (
-            <div key={room.id} className="bg-white shadow-sm rounded-lg border p-6 w-full">
-              <div className="flex justify-between items-start mb-4">
-                <div>
-                  <h3 className="text-xl font-semibold">{room.name}</h3>
-                  <p className="text-gray-600 text-sm">{room.location}</p>
-                  <div className="flex items-center mt-1">
-                    <UserIcon className="h-4 w-4 text-gray-500 mr-1" />
-                    <span className="text-gray-600 text-sm">Capacity: {room.capacity}</span>
-                  </div>
-                </div>
-                <div className="flex items-start space-x-2">
-                  {room.features && room.features.includes("WiFi") && (
-                    <div className="bg-gray-100 rounded-full p-2" title="WiFi Available">
-                      <Wifi className="h-4 w-4 text-gray-600" />
-                    </div>
-                  )}
-                  {room.features && room.features.includes("TV with HDMI") && (
-                    <div className="bg-gray-100 rounded-full p-2" title="TV with HDMI">
-                      <Tv className="h-4 w-4 text-gray-600" />
-                    </div>
-                  )}
-                  <Dialog open={isRoomInfoOpen && selectedRoom?.id === room.id} onOpenChange={(open) => {
-                    if (!open) setIsRoomInfoOpen(false);
-                    if (open) {
-                      setSelectedRoom(room);
-                      setIsRoomInfoOpen(true);
-                    }
-                  }}>
-                    <DialogTrigger asChild>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 bg-gray-100 rounded-full">
-                        <Info className="h-4 w-4 text-gray-600" />
-                      </Button>
-                    </DialogTrigger>
-                    <DialogContent>
-                      <DialogHeader>
-                        <DialogTitle>{room.name}</DialogTitle>
-                        <DialogDescription>{room.location}</DialogDescription>
-                      </DialogHeader>
-                      <div className="mt-4">
-                        <h4 className="font-medium text-sm mb-2">Room Features</h4>
-                        <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-                          {room.features && room.features.map((feature, index) => (
-                            <li key={index}>{feature}</li>
-                          ))}
-                        </ul>
-                        <p className="mt-4 text-sm text-gray-700">{room.description}</p>
-                        <div className="flex items-center mt-3">
-                          <UserIcon className="h-4 w-4 text-gray-500 mr-2" />
-                          <span className="text-gray-600 text-sm">Capacity: {room.capacity} people</span>
-                        </div>
-                        <div className="flex items-center mt-2">
-                          <ShieldCheckIcon className="h-4 w-4 text-gray-500 mr-2" />
-                          <span className="text-gray-600 text-sm">Room Number: {room.roomNumber}</span>
-                        </div>
-                      </div>
-                    </DialogContent>
-                  </Dialog>
-                </div>
-              </div>
-              
-              {/* Time slots */}
-              <div className="mt-4">
-                <h4 className="text-sm font-medium mb-2">Available Times</h4>
-                <div className="flex flex-wrap gap-2">
-                  {getRoomSchedule(room.id).map((slot) => {
-                    // Determine time slot display (9:00 AM format)
-                    const timeString = format(setHours(new Date(), slot.hour), 'h:00 a');
-                    
-                    // Choose appropriate styling based on availability
-                    const buttonClass = slot.isWeekendClosed
-                      ? "bg-gray-100 text-gray-400 cursor-not-allowed opacity-50" // Closed (weekend after hours)
-                      : slot.isAvailable
-                        ? "bg-blue-50 hover:bg-blue-100 text-blue-600 cursor-pointer border-blue-200" // Available
-                        : "bg-gray-100 text-gray-500 cursor-not-allowed"; // Booked
-                    
-                    return (
-                      <button
-                        key={`${room.id}-${slot.hour}`}
-                        className={`px-3 py-2 text-sm rounded-md border ${buttonClass}`}
-                        disabled={!slot.isAvailable || !!slot.isWeekendClosed}
-                        onClick={() => handleTimeSlotClick(room, slot.hour)}
-                      >
-                        {timeString}
-                      </button>
-                    );
-                  })}
-                </div>
+
+  // Rendering table rows - one per room
+  const renderRoomRows = () => {
+    return roomsData.map(room => (
+      <tr key={room.id} className="border-b">
+        <td className="p-3 bg-white">
+          <div className="flex items-center space-x-2">
+            <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center">
+              <UserIcon className="h-4 w-4" />
+            </div>
+            <div>
+              <h3 className="font-medium">{room.name}</h3>
+              <div className="text-xs text-gray-500 flex items-center">
+                <span>Capacity: {room.capacity}</span>
               </div>
             </div>
-          ))}
-        </div>
-      )}
-      
+          </div>
+        </td>
+        
+        {/* Render time slots from 2PM to 12AM (14:00 - 00:00) */}
+        {[14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24].map(hour => {
+          // Determine if this time slot is available
+          const isAvailable = isTimeSlotAvailable(room.id, hour);
+          // Weekend closed hours check
+          const isWeekend = [0, 6].includes(selectedDate.getDay());
+          const isAfterWeekendHours = isWeekend && hour >= 17;
+          
+          // CSS classes based on availability
+          const cellClass = isAfterWeekendHours ? 
+            "bg-gray-100 cursor-not-allowed" : 
+            isAvailable ? 
+              "bg-blue-500 hover:bg-blue-600 cursor-pointer" : 
+              "bg-gray-200 cursor-not-allowed";
+          
+          return (
+            <td key={`${room.id}-${hour}`} 
+                className={`p-0 border ${cellClass}`}
+                onClick={() => !isAfterWeekendHours && isAvailable && handleTimeSlotClick(room, hour)}>
+              <div className="w-full h-full min-h-10">&nbsp;</div>
+            </td>
+          );
+        })}
+      </tr>
+    ));
+  };
+
+  // Loading state
+  if (reservationsQuery.isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (reservationsQuery.isError) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-md p-4 text-red-700 mb-6">
+        <p className="font-medium">Error loading reservations</p>
+        <p className="text-sm">Please try again or contact the library staff if the problem persists.</p>
+      </div>
+    );
+  }
+
+  // Main component render
+  return (
+    <>
+      {/* Table layout for room booking */}
+      <table className="w-full border-collapse">
+        <thead>
+          <tr>
+            <th className="w-64 text-left p-3 border bg-gray-50">Space</th>
+            <th className="p-3 text-center border bg-gray-50">2:00pm</th>
+            <th className="p-3 text-center border bg-gray-50">3:00pm</th>
+            <th className="p-3 text-center border bg-gray-50">4:00pm</th>
+            <th className="p-3 text-center border bg-gray-50">5:00pm</th>
+            <th className="p-3 text-center border bg-gray-50">6:00pm</th>
+            <th className="p-3 text-center border bg-gray-50">7:00pm</th>
+            <th className="p-3 text-center border bg-gray-50">8:00pm</th>
+            <th className="p-3 text-center border bg-gray-50">9:00pm</th>
+            <th className="p-3 text-center border bg-gray-50">10:00pm</th>
+            <th className="p-3 text-center border bg-gray-50">11:00pm</th>
+            <th className="p-3 text-center border bg-gray-50">12:00am</th>
+          </tr>
+        </thead>
+        <tbody>
+          {renderRoomRows()}
+        </tbody>
+      </table>
+
       {/* Booking Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="sm:max-w-[425px]">
@@ -967,6 +868,6 @@ export default function RoomList({ selectedDate }: RoomListProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

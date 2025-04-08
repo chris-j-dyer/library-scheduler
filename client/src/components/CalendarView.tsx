@@ -191,8 +191,8 @@ export default function CalendarView() {
         </div>
       )}
       
-      {/* Render the component directly - it now has its own card layout */}
-      <div className="w-full">
+      {/* Room availability schedule */}
+      <div className="overflow-x-auto">
         <RoomList selectedDate={selectedDate} />
       </div>
     </div>
