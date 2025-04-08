@@ -525,6 +525,24 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     // Otherwise use the regular availability map
     return buildAvailabilityMap.isSlotAvailable(roomId, hour);
   };
+  
+  // Helper function to get room schedule for the room row
+  const getRoomSchedule = (roomId: number): TimeSlot[] => {
+    // Generate schedule for 9am to 8pm (9-20)
+    const hoursToShow = Array.from({ length: 12 }, (_, i) => i + 9);
+    
+    return hoursToShow.map(hour => {
+      // Check if this is after hours on weekend (library closes at 5pm)
+      const isWeekend = [0, 6].includes(selectedDate.getDay());
+      const isAfterWeekendHours = isWeekend && hour >= 17;
+      
+      return {
+        hour,
+        isAvailable: isTimeSlotAvailable(roomId, hour) && !isAfterWeekendHours,
+        isWeekendClosed: isAfterWeekendHours
+      };
+    });
+  };
 
   // Handler for time slot selection
   const handleTimeSlotClick = (room: Room, hour: number) => {
@@ -684,51 +702,6 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     }
   };
 
-  // Rendering table rows - one per room
-  const renderRoomRows = () => {
-    return roomsData.map(room => (
-      <tr key={room.id} className="border-b">
-        <td className="p-3 bg-white">
-          <div className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center">
-              <UserIcon className="h-4 w-4" />
-            </div>
-            <div>
-              <h3 className="font-medium">{room.name}</h3>
-              <div className="text-xs text-gray-500 flex items-center">
-                <span>Capacity: {room.capacity}</span>
-              </div>
-            </div>
-          </div>
-        </td>
-        
-        {/* Render time slots from 2PM to 12AM (14:00 - 00:00) */}
-        {[14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24].map(hour => {
-          // Determine if this time slot is available
-          const isAvailable = isTimeSlotAvailable(room.id, hour);
-          // Weekend closed hours check
-          const isWeekend = [0, 6].includes(selectedDate.getDay());
-          const isAfterWeekendHours = isWeekend && hour >= 17;
-          
-          // CSS classes based on availability
-          const cellClass = isAfterWeekendHours ? 
-            "bg-gray-100 cursor-not-allowed" : 
-            isAvailable ? 
-              "bg-blue-500 hover:bg-blue-600 cursor-pointer" : 
-              "bg-gray-200 cursor-not-allowed";
-          
-          return (
-            <td key={`${room.id}-${hour}`} 
-                className={`p-0 border ${cellClass}`}
-                onClick={() => !isAfterWeekendHours && isAvailable && handleTimeSlotClick(room, hour)}>
-              <div className="w-full h-full min-h-10">&nbsp;</div>
-            </td>
-          );
-        })}
-      </tr>
-    ));
-  };
-
   // Loading state
   if (reservationsQuery.isLoading) {
     return (
@@ -748,32 +721,123 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     );
   }
 
-  // Main component render
+  // Main component render - with card-based layout
   return (
-    <>
-      {/* Table layout for room booking */}
-      <table className="w-full border-collapse">
-        <thead>
-          <tr>
-            <th className="w-64 text-left p-3 border bg-gray-50">Space</th>
-            <th className="p-3 text-center border bg-gray-50">2:00pm</th>
-            <th className="p-3 text-center border bg-gray-50">3:00pm</th>
-            <th className="p-3 text-center border bg-gray-50">4:00pm</th>
-            <th className="p-3 text-center border bg-gray-50">5:00pm</th>
-            <th className="p-3 text-center border bg-gray-50">6:00pm</th>
-            <th className="p-3 text-center border bg-gray-50">7:00pm</th>
-            <th className="p-3 text-center border bg-gray-50">8:00pm</th>
-            <th className="p-3 text-center border bg-gray-50">9:00pm</th>
-            <th className="p-3 text-center border bg-gray-50">10:00pm</th>
-            <th className="p-3 text-center border bg-gray-50">11:00pm</th>
-            <th className="p-3 text-center border bg-gray-50">12:00am</th>
-          </tr>
-        </thead>
-        <tbody>
-          {renderRoomRows()}
-        </tbody>
-      </table>
-
+    <div className="space-y-6">
+      {/* Instructions */}
+      <div className="bg-blue-50 p-4 rounded-md border border-blue-100 mb-4">
+        <h3 className="text-lg font-medium text-blue-800 mb-2">How to book a room</h3>
+        <p className="text-sm text-blue-600 mb-2">1. Browse available rooms below</p>
+        <p className="text-sm text-blue-600 mb-2">2. Click on an available time slot (in blue)</p>
+        <p className="text-sm text-blue-600">3. Fill in the booking details and confirm</p>
+      </div>
+      
+      {/* Room cards with availability */}
+      {roomsData.length === 0 ? (
+        <div className="text-center py-8 text-gray-500">
+          No rooms available for booking
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {roomsData.map(room => (
+            <div key={room.id} className="bg-white p-6 rounded-xl border shadow-sm">
+              {/* Room header with details */}
+              <div className="flex justify-between mb-4">
+                <div>
+                  <h3 className="text-lg font-medium">{room.name}</h3>
+                  <p className="text-sm text-gray-500">{room.location}</p>
+                </div>
+                
+                {/* Room capacity and features */}
+                <div>
+                  <div className="flex items-center mb-2">
+                    <UserIcon className="h-4 w-4 text-gray-500 mr-1" />
+                    <span className="text-gray-600 text-sm">Capacity: {room.capacity}</span>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-2">
+                  {room.features && room.features.includes("WiFi") && (
+                    <div className="bg-gray-100 rounded-full p-2" title="WiFi Available">
+                      <Wifi className="h-4 w-4 text-gray-600" />
+                    </div>
+                  )}
+                  {room.features && room.features.includes("TV with HDMI") && (
+                    <div className="bg-gray-100 rounded-full p-2" title="TV with HDMI">
+                      <Tv className="h-4 w-4 text-gray-600" />
+                    </div>
+                  )}
+                  <Dialog open={isRoomInfoOpen && selectedRoom?.id === room.id} onOpenChange={(open) => {
+                    if (!open) setIsRoomInfoOpen(false);
+                    if (open) {
+                      setSelectedRoom(room);
+                      setIsRoomInfoOpen(true);
+                    }
+                  }}>
+                    <DialogTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 bg-gray-100 rounded-full">
+                        <Info className="h-4 w-4 text-gray-600" />
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>{room.name}</DialogTitle>
+                        <DialogDescription>{room.location}</DialogDescription>
+                      </DialogHeader>
+                      <div className="mt-4">
+                        <h4 className="font-medium text-sm mb-2">Room Features</h4>
+                        <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
+                          {room.features && room.features.map((feature, index) => (
+                            <li key={index}>{feature}</li>
+                          ))}
+                        </ul>
+                        <p className="mt-4 text-sm text-gray-700">{room.description}</p>
+                        <div className="flex items-center mt-3">
+                          <UserIcon className="h-4 w-4 text-gray-500 mr-2" />
+                          <span className="text-gray-600 text-sm">Capacity: {room.capacity} people</span>
+                        </div>
+                        <div className="flex items-center mt-2">
+                          <ShieldCheckIcon className="h-4 w-4 text-gray-500 mr-2" />
+                          <span className="text-gray-600 text-sm">Room Number: {room.roomNumber}</span>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
+              </div>
+              
+              {/* Time slots */}
+              <div className="mt-4">
+                <h4 className="text-sm font-medium mb-2">Available Times</h4>
+                <div className="flex flex-wrap gap-2">
+                  {getRoomSchedule(room.id).map((slot) => {
+                    // Determine time slot display (9:00 AM format)
+                    const timeString = format(setHours(new Date(), slot.hour), 'h:00 a');
+                    
+                    // Choose appropriate styling based on availability
+                    const buttonClass = slot.isWeekendClosed
+                      ? "bg-gray-100 text-gray-400 cursor-not-allowed opacity-50" // Closed (weekend after hours)
+                      : slot.isAvailable
+                        ? "bg-blue-50 hover:bg-blue-100 text-blue-600 cursor-pointer border-blue-200" // Available
+                        : "bg-gray-100 text-gray-500 cursor-not-allowed"; // Booked
+                    
+                    return (
+                      <button
+                        key={`${room.id}-${slot.hour}`}
+                        className={`px-3 py-2 text-sm rounded-md border ${buttonClass}`}
+                        disabled={!slot.isAvailable || !!slot.isWeekendClosed}
+                        onClick={() => handleTimeSlotClick(room, slot.hour)}
+                      >
+                        {timeString}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      
       {/* Booking Modal */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="sm:max-w-[425px]">
@@ -868,6 +932,6 @@ export default function RoomList({ selectedDate }: RoomListProps) {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
