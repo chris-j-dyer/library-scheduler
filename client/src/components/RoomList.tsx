@@ -5,41 +5,65 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { format, setHours, addHours, isSameDay } from "date-fns";
+import { format, setHours, addHours, isSameDay, parseISO } from "date-fns";
+import { Room as SchemaRoom, Reservation as SchemaReservation } from "@shared/schema";
 
-// Define room and reservation types
-type Room = {
-  id: number;
-  name: string;
-  capacity: number;
-  location: string;
-  features: string[];
-  description: string;
-};
+// Interface for room data with location string (for display)
+interface Room extends SchemaRoom {
+  location?: string; // Display location (branch + floor)
+}
 
+// Time slot representation for UI
 type TimeSlot = {
   hour: number;
   isAvailable: boolean;
+  isWeekendClosed?: boolean; // Special flag for weekend closed hours
 };
 
-type Reservation = {
+// Client-side representation of reservation with parsed dates
+interface Reservation {
+  // Core ID and tracking fields
   id: number;
   roomId: number;
-  date: Date;
-  startTime: Date;
-  endTime: Date;
-  userName: string;
-  userEmail: string;
-  purpose: string;
+  userId: number | null;
+  
+  // Guest information
+  guestName: string | null;
+  guestEmail: string | null;
+  
+  // Date and time fields
+  reservationDate: string; // ISO date string (DB format)
+  startTime: Date; // Parsed date object for UI manipulation
+  endTime: Date; // Parsed date object for UI manipulation
+  
+  // Reservation details
+  purpose: string | null;
+  status: string; // confirmed, cancelled, pending
+  confirmationCode: string | null;
+  notes: string | null;
+  
+  // Timestamps
+  createdAt: Date;
+  updatedAt: Date | null;
+  
+  // Client-side display properties
+  date: Date; // Parsed date object for the reservation date
+  userName?: string; // Display name (guest name or user name)
+  userEmail?: string; // Display email (guest email or user email)
 };
 
-// Sample room data
+// Sample room data - updated to match schema
 const roomsData: Room[] = [
   {
     id: 1,
     name: "Group Study Room",
     capacity: 12,
-    location: "South Boulevard - 2nd Floor",
+    locationId: 1,
+    floor: 2,
+    roomNumber: "A201",
+    isActive: true,
+    createdAt: new Date(),
+    location: "South Boulevard - 2nd Floor", // Display location (not in schema)
     features: ["Whiteboard", "TV with HDMI", "Conference Phone", "WiFi"],
     description: "A large meeting room ideal for group study sessions and collaborative projects. The room includes a large table with 12 chairs, a wall-mounted TV for presentations, and a whiteboard."
   },
@@ -47,7 +71,12 @@ const roomsData: Room[] = [
     id: 2,
     name: "Study Room 1",
     capacity: 5,
-    location: "South Boulevard - 1st Floor",
+    locationId: 1,
+    floor: 1,
+    roomNumber: "A101",
+    isActive: true,
+    createdAt: new Date(),
+    location: "South Boulevard - 1st Floor", // Display location (not in schema)
     features: ["Whiteboard", "WiFi", "Standing Desk"],
     description: "Medium-sized room suitable for small group discussions. Includes a round table with 5 chairs and a wall-mounted whiteboard."
   },
@@ -55,7 +84,12 @@ const roomsData: Room[] = [
     id: 3,
     name: "Study Room 2",
     capacity: 5,
-    location: "South Boulevard - 1st Floor",
+    locationId: 1,
+    floor: 1,
+    roomNumber: "A102",
+    isActive: true,
+    createdAt: new Date(),
+    location: "South Boulevard - 1st Floor", // Display location (not in schema)
     features: ["Whiteboard", "WiFi", "Power Outlets"],
     description: "Medium-sized room suitable for small group discussions. Includes a round table with 5 chairs and a wall-mounted whiteboard."
   },
@@ -63,7 +97,12 @@ const roomsData: Room[] = [
     id: 4,
     name: "Study Room 3",
     capacity: 2,
-    location: "South Boulevard - Quiet Zone",
+    locationId: 1,
+    floor: 1,
+    roomNumber: "Q101",
+    isActive: true,
+    createdAt: new Date(),
+    location: "South Boulevard - Quiet Zone", // Display location (not in schema)
     features: ["Small Desk", "WiFi", "Quiet Area"],
     description: "A small, quiet room ideal for individual or paired study sessions. Includes a small desk with 2 chairs."
   },
@@ -71,7 +110,12 @@ const roomsData: Room[] = [
     id: 5,
     name: "Study Room 4",
     capacity: 2,
-    location: "South Boulevard - Quiet Zone",
+    locationId: 1,
+    floor: 1,
+    roomNumber: "Q102",
+    isActive: true,
+    createdAt: new Date(),
+    location: "South Boulevard - Quiet Zone", // Display location (not in schema)
     features: ["Small Desk", "WiFi", "Quiet Area"],
     description: "A small, quiet room ideal for individual or paired study sessions. Includes a small desk with 2 chairs."
   },
@@ -79,7 +123,12 @@ const roomsData: Room[] = [
     id: 6,
     name: "Study Room 5",
     capacity: 2,
-    location: "South Boulevard - Quiet Zone",
+    locationId: 1,
+    floor: 1,
+    roomNumber: "Q103",
+    isActive: true,
+    createdAt: new Date(),
+    location: "South Boulevard - Quiet Zone", // Display location (not in schema)
     features: ["Small Desk", "WiFi", "Quiet Area", "Window View"],
     description: "A small, quiet room ideal for individual or paired study sessions. Includes a small desk with 2 chairs and a nice window view."
   }
@@ -90,22 +139,42 @@ const initialReservations: Reservation[] = [
   {
     id: 1,
     roomId: 1,
-    date: new Date(2025, 3, 7), // April 7, 2025
+    userId: null,
+    guestName: "John Smith",
+    guestEmail: "john@example.com",
+    reservationDate: "2025-04-07", // ISO format for DB
     startTime: setHours(new Date(2025, 3, 7), 14), // 2pm
     endTime: setHours(new Date(2025, 3, 7), 20), // 8pm
+    purpose: "Study Group",
+    status: "confirmed",
+    confirmationCode: "LIB-123456",
+    notes: null,
+    createdAt: new Date(),
+    updatedAt: null,
+    // Client-side properties for UI
+    date: new Date(2025, 3, 7),
     userName: "John Smith",
-    userEmail: "john@example.com",
-    purpose: "Study Group"
+    userEmail: "john@example.com"
   },
   {
     id: 2,
     roomId: 2,
-    date: new Date(2025, 3, 7),
+    userId: null,
+    guestName: "Sarah Johnson",
+    guestEmail: "sarah@example.com",
+    reservationDate: "2025-04-07", // ISO format for DB
     startTime: setHours(new Date(2025, 3, 7), 14),
     endTime: setHours(new Date(2025, 3, 7), 20),
-    userName: "Sarah Johnson",
-    userEmail: "sarah@example.com",
-    purpose: "Research"
+    purpose: "Research",
+    status: "confirmed",
+    confirmationCode: "LIB-789012",
+    notes: null,
+    createdAt: new Date(),
+    updatedAt: null,
+    // Client-side properties for UI
+    date: new Date(2025, 3, 7),
+    userName: "Sarah Johnson", 
+    userEmail: "sarah@example.com"
   }
 ];
 
@@ -168,16 +237,28 @@ export default function RoomList({ selectedDate }: RoomListProps) {
             endTime: res.endTime
           });
           
-          // Ensure we have proper Date objects for all date fields
-          const reservation = {
+          // Map server data to client Reservation with proper Date objects
+          const reservation: Reservation = {
             id: res.id,
             roomId: res.roomId,
-            date: new Date(res.reservationDate),
+            userId: res.userId || null,
+            guestName: res.guestName || null,
+            guestEmail: res.guestEmail || null,
+            // Keep reservationDate as string (DB format)
+            reservationDate: res.reservationDate,
+            // Parse times as Date objects for UI manipulation
             startTime: new Date(res.startTime),
             endTime: new Date(res.endTime),
+            purpose: res.purpose || 'Reservation',
+            status: res.status || 'confirmed',
+            confirmationCode: res.confirmationCode || null,
+            notes: res.notes || null,
+            createdAt: res.createdAt ? new Date(res.createdAt) : new Date(),
+            updatedAt: res.updatedAt ? new Date(res.updatedAt) : null,
+            // Client-side display properties
+            date: new Date(res.reservationDate), // Parsed date for UI
             userName: res.userId ? (res.userName || 'User') : res.guestName,
-            userEmail: res.userId ? (res.userEmail || '') : res.guestEmail,
-            purpose: res.purpose || 'Reservation'
+            userEmail: res.userId ? (res.userEmail || '') : res.guestEmail
           };
           
           console.log(`Processed reservation for room ${reservation.roomId} on ${format(reservation.date, 'yyyy-MM-dd')} at ${format(reservation.startTime, 'HH:mm')}`);
@@ -231,12 +312,27 @@ export default function RoomList({ selectedDate }: RoomListProps) {
             const clientReservation: Reservation = {
               id: reservation.id,
               roomId: reservation.roomId,
-              date: new Date(reservation.reservationDate),
+              userId: reservation.userId || null,
+              guestName: reservation.guestName || null,
+              guestEmail: reservation.guestEmail || null,
+              // Keep raw reservationDate as string from API
+              // If the reservationDate is a Date, format it as string, otherwise use as is
+              reservationDate: typeof reservation.reservationDate === 'object' 
+                ? format(reservation.reservationDate, 'yyyy-MM-dd')
+                : reservation.reservationDate,
+              // Parse date/times as Date objects for UI
               startTime: new Date(reservation.startTime),
               endTime: new Date(reservation.endTime),
+              purpose: reservation.purpose || 'Reservation',
+              status: reservation.status || 'confirmed',
+              confirmationCode: reservation.confirmationCode || null,
+              notes: reservation.notes || null,
+              createdAt: new Date(),
+              updatedAt: null,
+              // Client-side display properties
+              date: new Date(reservation.reservationDate),
               userName: reservation.userId ? (reservation.userName || 'User') : reservation.guestName,
-              userEmail: reservation.userId ? (reservation.userEmail || '') : reservation.guestEmail,
-              purpose: reservation.purpose || 'Reservation'
+              userEmail: reservation.userId ? (reservation.userEmail || '') : reservation.guestEmail
             };
             
             // Only add if it's not from the current user (to avoid duplicates)
@@ -383,17 +479,27 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       
       const newReservation = await response.json();
       
-      // Add reservation to local state with exact hours
+      // Map the API response to a client-side reservation
       const clientReservation: Reservation = {
-        id: newReservation.id,
-        roomId: selectedRoom.id,
-        date: selectedDate,
-        // Use the same startDate and endDate with minutes set to 0 for consistency
-        startTime: startDate,
-        endTime: endDate,
-        userName,
-        userEmail,
-        purpose: purpose || "Study session"
+        // Include all fields from the server response
+        ...newReservation,
+        // Override with properly parsed dates
+        reservationDate: format(selectedDate, 'yyyy-MM-dd'), // ISO format string for DB
+        startTime: startDate, // Date object for UI manipulation
+        endTime: endDate, // Date object for UI manipulation
+        // Make sure we have the right userId (for logged in users) or guest info
+        userId: user?.id || null,
+        guestName: user ? null : userName,
+        guestEmail: user ? null : userEmail,
+        // Status should always be "confirmed" for new reservations
+        status: "confirmed",
+        // Set creation timestamp if not provided by server
+        createdAt: newReservation.createdAt ? new Date(newReservation.createdAt) : new Date(),
+        updatedAt: newReservation.updatedAt ? new Date(newReservation.updatedAt) : null,
+        // Add client-side display properties
+        date: selectedDate, // Parsed date for UI (backward compatibility)
+        userName, // Display name for UI
+        userEmail // Display email for UI
       };
       
       console.log('Created client reservation:', {
@@ -475,8 +581,16 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       
       console.log(`Checking if hour ${currentHour} is bookable for room ${roomId}`);
       
-      const isReserved = reservations.some(reservation => {
-        if (reservation.roomId !== roomId) {
+      // Group and sort reservations by ID to find the most recent status
+      // This implements the append-only pattern where newer rows override older ones
+      const roomReservations = reservations
+        .filter(r => r.roomId === roomId)
+        .sort((a, b) => b.id - a.id); // Sort descending by ID (newest first)
+      
+      // Check if any active reservations overlap with this time slot
+      const isReserved = roomReservations.some(reservation => {
+        // Skip cancelled reservations - they don't block time slots
+        if (reservation.status === 'cancelled') {
           return false;
         }
         
@@ -496,7 +610,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         const endHour = reservation.endTime.getHours();
         
         // Log the comparison for debugging
-        console.log(`Comparing hour ${currentHour} with reservation hours: ${startHour}-${endHour}`);
+        console.log(`Comparing hour ${currentHour} with reservation hours: ${startHour}-${endHour} (status: ${reservation.status || 'confirmed'})`);
         
         // Check if current hour falls within the reservation time range
         const isOverlapping = currentHour >= startHour && currentHour < endHour;
@@ -547,10 +661,10 @@ export default function RoomList({ selectedDate }: RoomListProps) {
                     Capacity: {room.capacity}
                   </div>
                 </div>
-                {room.features.includes("WiFi") && (
+                {room.features && room.features.includes("WiFi") && (
                   <Wifi className="h-4 w-4 ml-2 text-gray-400" />
                 )}
-                {room.features.includes("TV with HDMI") && (
+                {room.features && room.features.includes("TV with HDMI") && (
                   <Tv className="h-4 w-4 ml-1 text-gray-400" />
                 )}
               </div>
@@ -619,7 +733,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
             <div>
               <h4 className="text-sm font-medium mb-2 text-gray-700">Features</h4>
               <ul className="text-sm text-gray-600 space-y-1">
-                {selectedRoom?.features.map((feature, index) => (
+                {selectedRoom?.features?.map((feature, index) => (
                   <li key={index} className="flex items-center">
                     <ShieldCheckIcon className="h-4 w-4 mr-2 text-green-500" />
                     {feature}

@@ -40,13 +40,28 @@ export default function ProfilePage() {
 
   // Separate reservations into past and upcoming
   const now = new Date();
-  const upcomingReservations = reservations.filter(
-    (res: Reservation) => new Date(res.startTime) > now
-  ).sort((a: Reservation, b: Reservation) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
   
-  const pastReservations = reservations.filter(
-    (res: Reservation) => new Date(res.startTime) <= now
-  ).sort((a: Reservation, b: Reservation) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
+  // Filter active (non-cancelled) reservations with start time in the future
+  const upcomingReservations = reservations
+    .filter((res: Reservation) => {
+      // Skip cancelled reservations
+      if (res.status === 'cancelled') return false;
+      // Only include future reservations
+      return new Date(res.startTime) > now;
+    })
+    .sort((a: Reservation, b: Reservation) => 
+      new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+  
+  // Filter active (non-cancelled) reservations with start time in the past
+  const pastReservations = reservations
+    .filter((res: Reservation) => {
+      // Skip cancelled reservations
+      if (res.status === 'cancelled') return false;
+      // Only include past reservations
+      return new Date(res.startTime) <= now;
+    })
+    .sort((a: Reservation, b: Reservation) => 
+      new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
 
   // Handle reservation cancellation
   const handleCancelReservation = async (id: number) => {
