@@ -54,15 +54,21 @@ export default function AuthPage() {
     isLoggedIn: !!user, 
     isLoading, 
     currentLocation: location,
-    userData: user 
+    userData: user,
+    loginPending: loginMutation.isPending,
+    registerPending: registerMutation.isPending
   });
 
-  // Only redirect when we know for sure the user is logged in and auth status is not loading
-  if (user && !isLoading) {
-    console.log("User is authenticated, redirecting to home");
-    navigate("/");
-    return null;
-  }
+  // Use effect for navigation to avoid navigation during render
+  useEffect(() => {
+    // Only redirect when we know for sure the user is logged in and auth status is not loading
+    if (user && !isLoading && !loginMutation.isPending && !registerMutation.isPending) {
+      console.log("User is authenticated, redirecting to home");
+      // Small timeout to ensure all state updates are complete
+      const timer = setTimeout(() => navigate("/"), 100);
+      return () => clearTimeout(timer);
+    }
+  }, [user, isLoading, navigate, loginMutation.isPending, registerMutation.isPending]);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background to-secondary/10">
