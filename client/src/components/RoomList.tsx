@@ -202,6 +202,17 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   const [localDate, setLocalDate] = useState(new Date(selectedDate));
   const websocketRef = useRef<WebSocket | null>(null);
   
+  // Define generateSlotId BEFORE any function that uses it
+  // Generate a unique ID for each room+hour+date combo
+  const generateSlotId = useCallback((roomId: number, hour: number) => {
+    // Use localDate to ensure date is consistent with the component's current state
+    const dateStr = format(localDate, 'yyyyMMdd'); 
+    const paddedRoomId = roomId.toString().padStart(2, '0');
+    const paddedHour = hour.toString().padStart(2, '0');
+    console.log(`Generated slot ID for room ${roomId}, hour ${hour}, date ${dateStr}: ${paddedRoomId}${paddedHour}${dateStr}`);
+    return `${paddedRoomId}${paddedHour}${dateStr}`;
+  }, [localDate]); // Depend only on localDate
+  
   // Update user info when user changes (logs in/out)
   useEffect(() => {
     if (user) {
@@ -308,6 +319,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   const reservations = reservationsQuery.data || [];
   
   // Function to mark a reservation in the availability map
+  // Note: Now using the previously defined generateSlotId function
   const markReservationSlots = useCallback((reservation: any, force = false) => {
     const resDate = new Date(reservation.reservationDate);
     const startTime = new Date(reservation.startTime);
@@ -326,11 +338,8 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     // Generate a list of slots that are now occupied
     const occupiedSlots = [];
     for (let hour = startHour; hour < endHour; hour++) {
-      // Generate unique ID for this slot
-      const dateStr = format(selectedDate, 'yyyyMMdd');
-      const paddedRoomId = roomId.toString().padStart(2, '0');
-      const paddedHour = hour.toString().padStart(2, '0');
-      const slotId = `${paddedRoomId}${paddedHour}${dateStr}`;
+      // Use the generateSlotId function that was defined earlier
+      const slotId = generateSlotId(roomId, hour);
       occupiedSlots.push(slotId);
     }
     
@@ -341,7 +350,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     }
     
     return false;
-  }, [selectedDate]);
+  }, [selectedDate, generateSlotId]);
   
   // Setup WebSocket connection with proper dependencies and cleanup
   useEffect(() => {
@@ -544,21 +553,10 @@ export default function RoomList({ selectedDate }: RoomListProps) {
           .map(([slotId]) => slotId);
       }
     };
-  }, [reservations, selectedDate, roomsData]);
+  }, [reservations, selectedDate, roomsData, generateSlotId]);
   
   // Create a manual override map for freshly booked slots
   const [manuallyBookedSlots, setManuallyBookedSlots] = useState<Map<string, boolean>>(new Map());
-  
-  // Generate a unique ID for each room+hour+date combo
-  // Create a memoized version of generateSlotId that doesn't depend on selectedDate closure
-  const generateSlotId = useCallback((roomId: number, hour: number) => {
-    // Use localDate to ensure date is consistent with the component's current state
-    const dateStr = format(localDate, 'yyyyMMdd'); 
-    const paddedRoomId = roomId.toString().padStart(2, '0');
-    const paddedHour = hour.toString().padStart(2, '0');
-    console.log(`Generated slot ID for room ${roomId}, hour ${hour}, date ${dateStr}: ${paddedRoomId}${paddedHour}${dateStr}`);
-    return `${paddedRoomId}${paddedHour}${dateStr}`;
-  }, [localDate]); // Depend only on localDate
   
   // Simplified availability check function that considers both our map and manual overrides
   const isTimeSlotAvailable = (roomId: number, hour: number) => {
@@ -601,568 +599,374 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     return timeSlots;
   };
   
-  const handleTimeSlotClick = (roomId: number, hour: number, isAvailable: boolean) => {
-    if (!isAvailable) {
-      toast({
-        title: "Time slot not available",
-        description: "Please select an available time slot",
-        variant: "destructive"
-      });
-      return;
-    }
-    
-    const room = roomsData.find(r => r.id === roomId);
-    if (room) {
+  // Handler for time slot selection
+  const handleTimeSlotClick = (room: Room, hour: number) => {
+    // Check if the slot is available
+    if (isTimeSlotAvailable(room.id, hour)) {
       setSelectedRoom(room);
       setSelectedTimeSlot(hour);
-      setSelectedDuration(1); // Default to 1 hour
       setIsModalOpen(true);
-    }
-  };
-  
-  const handleRoomInfoClick = (roomId: number) => {
-    const room = roomsData.find(r => r.id === roomId);
-    if (room) {
-      setSelectedRoom(room);
-      setIsRoomInfoOpen(true);
-    }
-  };
-  
-  const handleBookingSubmit = async () => {
-    if (!selectedRoom || selectedTimeSlot === null) return;
-    
-    if (!userName || !userEmail) {
+      
+      // Prefill the form with user data if logged in
+      if (user) {
+        setUserName(user.name || user.username);
+        setUserEmail(user.email || "");
+      }
+    } else {
       toast({
-        title: "Missing information",
-        description: "Please provide your name and email",
+        title: "Time slot unavailable",
+        description: `This time slot is already booked or the library is closed.`,
         variant: "destructive"
       });
-      return;
     }
-    
-    // Prepare reservation data for API with exact hours
-    // Create dates with minutes and seconds set to zero
-    const startDate = new Date(selectedDate);
-    startDate.setHours(selectedTimeSlot, 0, 0, 0);
-    
-    const endDate = new Date(selectedDate);
-    endDate.setHours(selectedTimeSlot + selectedDuration, 0, 0, 0);
-    
-    const reservationData = {
-      roomId: selectedRoom.id,
-      // Format dates as strings for API compatibility
-      reservationDate: format(selectedDate, 'yyyy-MM-dd'),
-      startTime: format(startDate, 'yyyy-MM-dd HH:mm:ss'),
-      endTime: format(endDate, 'yyyy-MM-dd HH:mm:ss'),
-      purpose: purpose || "Study session",
-      // If user is logged in, these fields will be associated with the user account
-      // Otherwise, use the guest fields
-      guestName: userName,
-      guestEmail: userEmail,
-      status: "confirmed",
-      confirmationCode: `LIB-${Math.floor(100000 + Math.random() * 900000)}`
-    };
-    
+  };
+  
+  // Handler for booking form submission
+  const handleBookingSubmit = async () => {
     try {
-      // Call the API to create reservation
+      if (!selectedRoom || selectedTimeSlot === null) {
+        toast({
+          title: "Booking error",
+          description: "Please select a room and time slot.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Calculate start and end times
+      let startTime: Date, endTime: Date;
+      
+      // Create date objects for the selected date and time
+      startTime = new Date(selectedDate);
+      startTime.setHours(selectedTimeSlot, 0, 0, 0);
+      
+      // Calculate end time based on duration
+      endTime = new Date(selectedDate);
+      endTime.setHours(selectedTimeSlot + selectedDuration, 0, 0, 0);
+      
+      // Validate input fields
+      if (!userName || !userEmail || !purpose) {
+        toast({
+          title: "Missing information",
+          description: "Please fill in all required fields.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      console.log("Creating reservation:", {
+        room: selectedRoom.name,
+        date: format(selectedDate, 'yyyy-MM-dd'),
+        startTime: format(startTime, 'HH:mm'),
+        endTime: format(endTime, 'HH:mm'),
+        userName,
+        userEmail,
+        purpose
+      });
+      
+      // Create the reservation object
+      const clientReservation: Reservation = {
+        id: Math.floor(Math.random() * 10000), // Temporary ID until the server assigns one
+        roomId: selectedRoom.id,
+        userId: user ? user.id : null,
+        guestName: user ? null : userName,
+        guestEmail: user ? null : userEmail,
+        reservationDate: format(selectedDate, 'yyyy-MM-dd'),
+        startTime: startTime,
+        endTime: endTime,
+        purpose: purpose,
+        status: 'confirmed',
+        confirmationCode: `LIB-${Math.floor(Math.random() * 1000000).toString().padStart(6, '0')}`,
+        notes: null,
+        createdAt: new Date(),
+        updatedAt: null,
+        date: new Date(selectedDate),
+        userName: userName,
+        userEmail: userEmail
+      };
+      
+      // Send the reservation to the server
       const response = await fetch('/api/reservations', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify(reservationData),
-        credentials: 'include' // Include auth cookies
+        body: JSON.stringify({
+          roomId: selectedRoom.id,
+          userId: user ? user.id : null,
+          guestName: user ? null : userName,
+          guestEmail: user ? null : userEmail,
+          reservationDate: format(selectedDate, 'yyyy-MM-dd'),
+          startTime: startTime.toISOString(),
+          endTime: endTime.toISOString(),
+          purpose: purpose,
+          status: 'confirmed'
+        }),
       });
       
       if (!response.ok) {
-        throw new Error('Failed to create reservation');
+        throw new Error(`Server error: ${response.status} ${response.statusText}`);
       }
       
-      const newReservation = await response.json();
+      const serverReservation = await response.json();
+      console.log("Reservation confirmed:", serverReservation);
       
-      // Map the API response to a client-side reservation
-      const clientReservation: Reservation = {
-        // Include all fields from the server response
-        ...newReservation,
-        // Override with properly parsed dates
-        reservationDate: format(selectedDate, 'yyyy-MM-dd'), // ISO format string for DB
-        startTime: startDate, // Date object for UI manipulation
-        endTime: endDate, // Date object for UI manipulation
-        // Make sure we have the right userId (for logged in users) or guest info
-        userId: user?.id || null,
-        guestName: user ? null : userName,
-        guestEmail: user ? null : userEmail,
-        // Status should always be "confirmed" for new reservations
-        status: "confirmed",
-        // Set creation timestamp if not provided by server
-        createdAt: newReservation.createdAt ? new Date(newReservation.createdAt) : new Date(),
-        updatedAt: newReservation.updatedAt ? new Date(newReservation.updatedAt) : null,
-        // Add client-side display properties
-        date: selectedDate, // Parsed date for UI (backward compatibility)
-        userName, // Display name for UI
-        userEmail // Display email for UI
-      };
+      // Close the modal
+      setIsModalOpen(false);
       
-      console.log('Created client reservation:', {
-        id: clientReservation.id,
-        roomId: clientReservation.roomId,
-        date: format(clientReservation.date, 'yyyy-MM-dd'),
-        startTime: format(clientReservation.startTime, 'HH:mm:ss'),
-        endTime: format(clientReservation.endTime, 'HH:mm:ss')
-      });
+      // Show confirmation dialog
+      setIsConfirmationOpen(true);
       
-      // Update the query cache with the new reservation data
-      // This is more reliable than manually updating the local state
+      // Clear the form
+      setPurpose("");
+      
+      // Mark all the booked slots as unavailable
+      const newBookedSlots = new Map(manuallyBookedSlots);
+      
+      for (let hour = selectedTimeSlot; hour < selectedTimeSlot + selectedDuration; hour++) {
+        const slotId = generateSlotId(selectedRoom.id, hour);
+        newBookedSlots.set(slotId, true);
+        console.log(`Manually marking slot ${slotId} as booked`);
+      }
+      
+      setManuallyBookedSlots(newBookedSlots);
+      
+      // Update React Query cache
       queryClient.setQueryData(
-        ['/api/reservations/by-date', formattedDate],
-        (oldData: any[] | undefined) => {
-          if (!oldData) return [newReservation];
-          return [...oldData, newReservation];
+        ['/api/reservations/by-date', format(selectedDate, 'yyyy-MM-dd')],
+        (oldData: any[] = []) => {
+          return [...oldData, serverReservation];
         }
       );
       
-      // Also invalidate the query to ensure it will be refetched next time
-      // This ensures data consistency in case the server's response is different
+      // Invalidate the reservations query to trigger a refetch
       queryClient.invalidateQueries({ 
-        queryKey: ['/api/reservations/by-date', formattedDate] 
+        queryKey: ['/api/reservations/by-date', format(selectedDate, 'yyyy-MM-dd')] 
       });
       
-      // Mark slots as manually booked in our state
-      const newBookedSlots = new Map(manuallyBookedSlots);
-      
-      // Get the time range from the reservation
-      const startHour = startDate.getHours();
-      const endHour = endDate.getHours();
-      
-      // Mark each affected hour
-      for (let hour = startHour; hour < endHour; hour++) {
-        const slotId = generateSlotId(selectedRoom.id, hour);
-        newBookedSlots.set(slotId, true);
-        console.log(`Directly marked slot ${slotId} as booked`);
-      }
-      
-      // Update the state with new booked slots
-      setManuallyBookedSlots(newBookedSlots);
-      
-      // Force a rerender to update the UI immediately
+      // Force a re-render with updated date
       setLocalDate(new Date(selectedDate));
       
-      // Close booking modal and show confirmation
-      setIsModalOpen(false);
-      setIsConfirmationOpen(true);
     } catch (error) {
-      console.error('Error creating reservation:', error);
+      console.error("Booking submission error:", error);
       toast({
-        title: "Reservation Failed",
-        description: "There was an error creating your reservation. Please try again.",
+        title: "Booking failed",
+        description: error instanceof Error ? error.message : "An unexpected error occurred",
         variant: "destructive"
       });
     }
   };
   
-  const formatTimeSlot = (hour: number) => {
-    // Create a new date and set both hours and minutes (setting minutes to 0)
-    const date = new Date();
-    date.setHours(hour, 0, 0, 0);
-    return format(date, 'h:00 a');
-  };
-  
-  const handleDurationChange = (value: string) => {
-    setSelectedDuration(parseInt(value));
-  };
-  
-  const closeConfirmation = () => {
-    setIsConfirmationOpen(false);
-    // Reset form
-    setSelectedRoom(null);
-    setSelectedTimeSlot(null);
-    // Only reset user info if not logged in
-    if (!user) {
-      setUserName("");
-      setUserEmail("");
-    }
-    setPurpose("");
-    
-    toast({
-      title: "Booking confirmed",
-      description: "Your room has been successfully reserved",
-    });
-  };
-  
-  // Calculate end time based on start time and duration
-  const getEndTime = () => {
-    if (selectedTimeSlot === null) return "";
-    // Create a new date, set hours to selected time slot and minutes to 0, then add the duration
-    const date = new Date();
-    date.setHours(selectedTimeSlot, 0, 0, 0);
-    const endTime = addHours(date, selectedDuration);
-    return format(endTime, 'h:00 a');
-  };
-  
-  // Function to check if a time slot is bookable (available and within booking constraints)
-  const isTimeSlotBookable = (roomId: number, hour: number, consecutive: number = 1) => {
-    // Log all reservations for debugging
-    console.log(`ALL RESERVATIONS (${reservations.length} total):`, JSON.stringify(reservations.map(r => ({
-      id: r.id, roomId: r.roomId, status: r.status,
-      date: (r.date ? format(r.date, 'yyyy-MM-dd') : null) || (r.reservationDate || 'unknown'),
-      startTime: typeof r.startTime === 'string' ? r.startTime : format(r.startTime, 'HH:mm:ss'),
-      endTime: typeof r.endTime === 'string' ? r.endTime : format(r.endTime, 'HH:mm:ss')
-    }))));
-    
-    // Get the next 'consecutive' hours and check if they're all available
-    for (let i = 0; i < consecutive; i++) {
-      const currentHour = hour + i;
-      
-      // Check if hour is outside library hours (9am-8pm, or 9am-5pm on weekends)
-      if (currentHour < 9 || currentHour > 20) return false; // Outside library hours
-      
-      // Check for weekend closing time restrictions
-      const isWeekend = [0, 6].includes(selectedDate.getDay()); // 0 = Sunday, 6 = Saturday
-      if (isWeekend && currentHour >= 17) return false; // Weekend after 5pm
-      
-      // Simplified approach: search directly for any confirmed reservation that blocks this time slot
-      const targetDateStr = format(selectedDate, 'yyyy-MM-dd');
-      
-      console.log(`Checking if hour ${currentHour} is bookable for room ${roomId} on ${targetDateStr}`);
-      
-      // Find any reservation that:
-      // 1. Is for this room
-      // 2. Is on the selected date
-      // 3. Has status 'confirmed'
-      // 4. Overlaps with the current hour
-      const blockedByReservation = reservations.find(r => {
-        // Must be for this room
-        if (r.roomId !== roomId) {
-          return false;
-        }
-        
-        // Must be confirmed (not cancelled)
-        if (r.status !== 'confirmed') {
-          console.log(`Skipping reservation #${r.id} because status is ${r.status}`);
-          return false;
-        }
-        
-        // Check date match using ISO date strings for reliable comparison
-        const reservationDateObj = r.date || new Date(r.reservationDate);
-        const reservationDateStr = format(reservationDateObj, 'yyyy-MM-dd');
-        if (reservationDateStr !== targetDateStr) {
-          console.log(`Skipping reservation #${r.id} because date ${reservationDateStr} !== ${targetDateStr}`);
-          return false;
-        }
-        
-        // Get the reservation times
-        let startTime: Date, endTime: Date;
-        
-        if (typeof r.startTime === 'string') {
-          startTime = new Date(r.startTime);
-          endTime = new Date(r.endTime);
-        } else {
-          startTime = r.startTime;
-          endTime = r.endTime;
-        }
-        
-        // Extract hours
-        const startHour = startTime.getHours();
-        const endHour = endTime.getHours();
-        
-        console.log(`Checking reservation #${r.id} with time range ${startHour}-${endHour} against hour ${currentHour}`);
-        
-        // Check if current hour falls within the reservation time range
-        const isOverlapping = currentHour >= startHour && currentHour < endHour;
-        
-        if (isOverlapping) {
-          console.log(`Hour ${currentHour} for room ${roomId} is BOOKED by reservation #${r.id}!`);
-          return true;
-        }
-        
-        return false;
-      });
-      
-      if (blockedByReservation) {
-        console.log(`Hour ${currentHour} for room ${roomId} is NOT AVAILABLE due to reservation #${blockedByReservation.id}`);
-        return false;
-      }
-    }
-    
-    // If we get here, this time slot is available
-    console.log(`Hour ${hour} for room ${roomId} is AVAILABLE`);
-    return true;
-  };
-  
-  // Function to get available durations for a time slot
-  const getAvailableDurations = (roomId: number, startHour: number) => {
-    const durations = [];
-    
-    // Add 1 hour option (always available if the current slot is available)
-    if (isTimeSlotAvailable(roomId, startHour)) {
-      durations.push(1);
-      
-      // Check if 2 hours is available (current hour and next hour)
-      if (startHour < 20 && isTimeSlotAvailable(roomId, startHour + 1)) {
-        durations.push(2);
-      }
-    }
-    
-    return durations;
-  };
-  
   return (
-    <>
-      {roomsData.map((room) => {
-        const schedule = getRoomSchedule(room.id);
-        
-        return (
-          <tr key={room.id} className="hover:bg-gray-50 transition-colors">
-            <td className="border border-gray-200 p-3">
-              <div className="flex items-center">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="info-btn mr-2 p-1 px-2"
-                  onClick={() => handleRoomInfoClick(room.id)}
-                >
-                  <Info className="h-3 w-3" />
-                </Button>
+    <div className="flex flex-col mt-6">
+      <h2 className="text-2xl font-semibold mb-4">Available Rooms</h2>
+      
+      {/* Loading state */}
+      {reservationsQuery.isLoading && (
+        <div className="flex items-center justify-center h-64">
+          <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
+        </div>
+      )}
+      
+      {/* Error state */}
+      {reservationsQuery.isError && (
+        <div className="bg-red-50 border border-red-200 rounded-md p-4 text-red-700 mb-6">
+          <p className="font-medium">Error loading reservations</p>
+          <p className="text-sm">Please try again or contact the library staff if the problem persists.</p>
+        </div>
+      )}
+      
+      {/* Room List */}
+      {!reservationsQuery.isLoading && !reservationsQuery.isError && (
+        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-1">
+          {roomsData.map(room => (
+            <div key={room.id} className="bg-white shadow-sm rounded-lg border p-6">
+              <div className="flex justify-between items-start mb-4">
                 <div>
-                  <div className="font-medium">{room.name}</div>
-                  <div className="text-sm text-gray-500 flex items-center">
-                    <UserIcon className="h-3 w-3 mr-1" /> 
-                    Capacity: {room.capacity}
+                  <h3 className="text-xl font-semibold">{room.name}</h3>
+                  <p className="text-gray-600 text-sm">{room.location}</p>
+                  <div className="flex items-center mt-1">
+                    <UserIcon className="h-4 w-4 text-gray-500 mr-1" />
+                    <span className="text-gray-600 text-sm">Capacity: {room.capacity}</span>
                   </div>
                 </div>
-                {room.features && room.features.includes("WiFi") && (
-                  <Wifi className="h-4 w-4 ml-2 text-gray-400" />
-                )}
-                {room.features && room.features.includes("TV with HDMI") && (
-                  <Tv className="h-4 w-4 ml-1 text-gray-400" />
-                )}
+                <div className="flex items-start space-x-2">
+                  {room.features.includes("WiFi") && (
+                    <div className="bg-gray-100 rounded-full p-2" title="WiFi Available">
+                      <Wifi className="h-4 w-4 text-gray-600" />
+                    </div>
+                  )}
+                  {room.features.includes("TV with HDMI") && (
+                    <div className="bg-gray-100 rounded-full p-2" title="TV with HDMI">
+                      <Tv className="h-4 w-4 text-gray-600" />
+                    </div>
+                  )}
+                  <Dialog open={isRoomInfoOpen && selectedRoom?.id === room.id} onOpenChange={(open) => {
+                    if (!open) setIsRoomInfoOpen(false);
+                    if (open) {
+                      setSelectedRoom(room);
+                      setIsRoomInfoOpen(true);
+                    }
+                  }}>
+                    <DialogTrigger asChild>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 bg-gray-100 rounded-full">
+                        <Info className="h-4 w-4 text-gray-600" />
+                      </Button>
+                    </DialogTrigger>
+                    <DialogContent>
+                      <DialogHeader>
+                        <DialogTitle>{room.name}</DialogTitle>
+                        <DialogDescription>{room.location}</DialogDescription>
+                      </DialogHeader>
+                      <div className="mt-4">
+                        <h4 className="font-medium text-sm mb-2">Room Features</h4>
+                        <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
+                          {room.features.map((feature, index) => (
+                            <li key={index}>{feature}</li>
+                          ))}
+                        </ul>
+                        <p className="mt-4 text-sm text-gray-700">{room.description}</p>
+                        <div className="flex items-center mt-3">
+                          <UserIcon className="h-4 w-4 text-gray-500 mr-2" />
+                          <span className="text-gray-600 text-sm">Capacity: {room.capacity} people</span>
+                        </div>
+                        <div className="flex items-center mt-2">
+                          <ShieldCheckIcon className="h-4 w-4 text-gray-500 mr-2" />
+                          <span className="text-gray-600 text-sm">Room Number: {room.roomNumber}</span>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
+                </div>
               </div>
-            </td>
-            
-            {schedule.map((slot, index) => {
-              // Check if it's a weekend slot after 5pm to show special styling
-              const isWeekend = [0, 6].includes(selectedDate.getDay()); // 0 = Sunday, 6 = Saturday
-              const isWeekendAfterHours = isWeekend && slot.hour >= 17; // 5pm and later on weekends
-              const cellTitle = slot.isAvailable
-                ? `Available at ${formatTimeSlot(slot.hour)}`
-                : isWeekendAfterHours
-                  ? `Library closes at 5:00 PM on weekends`
-                  : `Occupied at ${formatTimeSlot(slot.hour)}`;
               
-              let cellClass = 'calendar-cell';
-              if (slot.isAvailable) {
-                cellClass += ' available';
-              } else if (isWeekendAfterHours) {
-                cellClass += ' weekend-closed';
-              } else {
-                cellClass += ' occupied';
-              }
-              
-              return (
-                <td 
-                  key={index} 
-                  className="p-0 border border-gray-200"
-                  onClick={() => handleTimeSlotClick(room.id, slot.hour, slot.isAvailable)}
-                >
-                  <div 
-                    className={cellClass}
-                    title={cellTitle}
-                  ></div>
-                </td>
-              );
-            })}
-          </tr>
-        );
-      })}
+              {/* Time slots */}
+              <div className="mt-4">
+                <h4 className="text-sm font-medium mb-2">Available Times</h4>
+                <div className="flex flex-wrap gap-2">
+                  {getRoomSchedule(room.id).map((slot) => {
+                    // Determine time slot display (9:00 AM format)
+                    const timeString = format(setHours(new Date(), slot.hour), 'h:00 a');
+                    
+                    // Choose appropriate styling based on availability
+                    const buttonClass = slot.isWeekendClosed
+                      ? "bg-gray-100 text-gray-400 cursor-not-allowed opacity-50" // Closed (weekend after hours)
+                      : slot.isAvailable
+                        ? "bg-blue-50 hover:bg-blue-100 text-blue-600 cursor-pointer border-blue-200" // Available
+                        : "bg-gray-100 text-gray-500 cursor-not-allowed"; // Booked
+                    
+                    return (
+                      <button
+                        key={`${room.id}-${slot.hour}`}
+                        className={`px-3 py-2 text-sm rounded-md border ${buttonClass}`}
+                        disabled={!slot.isAvailable || !!slot.isWeekendClosed}
+                        onClick={() => handleTimeSlotClick(room, slot.hour)}
+                      >
+                        {timeString}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       
-      {/* Room Info Dialog */}
-      <Dialog open={isRoomInfoOpen} onOpenChange={setIsRoomInfoOpen}>
-        <DialogContent className="sm:max-w-md">
+      {/* Booking Modal */}
+      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle className="text-xl">{selectedRoom?.name}</DialogTitle>
-            <DialogDescription className="text-gray-500">
-              {selectedRoom?.location}
+            <DialogTitle>Book a Room</DialogTitle>
+            <DialogDescription>
+              {selectedRoom && selectedTimeSlot !== null && (
+                `${selectedRoom.name} on ${format(selectedDate, 'EEEE, MMMM d, yyyy')} at ${format(setHours(new Date(), selectedTimeSlot), 'h:00 a')}`
+              )}
             </DialogDescription>
           </DialogHeader>
           
-          <div className="space-y-4 py-3">
-            <div>
-              <h4 className="text-sm font-medium mb-2 text-gray-700">Room Details</h4>
-              <p className="text-sm text-gray-600">{selectedRoom?.description}</p>
+          <div className="grid gap-4 py-4">
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="duration" className="text-right text-sm">Duration</label>
+              <div className="col-span-3">
+                <Select value={selectedDuration.toString()} onValueChange={(value) => setSelectedDuration(parseInt(value))}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select duration" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">1 hour</SelectItem>
+                    <SelectItem value="2">2 hours</SelectItem>
+                    <SelectItem value="3">3 hours</SelectItem>
+                    <SelectItem value="4">4 hours</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             
-            <div>
-              <h4 className="text-sm font-medium mb-2 text-gray-700">Capacity</h4>
-              <p className="text-sm text-gray-600 flex items-center">
-                <UserIcon className="h-4 w-4 mr-2 text-blue-600" />
-                {selectedRoom?.capacity} people maximum
-              </p>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="name" className="text-right text-sm">Name</label>
+              <input
+                id="name"
+                value={userName}
+                onChange={(e) => setUserName(e.target.value)}
+                className="col-span-3 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                disabled={!!user} // Disabled if user is logged in
+              />
             </div>
             
-            <div>
-              <h4 className="text-sm font-medium mb-2 text-gray-700">Features</h4>
-              <ul className="text-sm text-gray-600 space-y-1">
-                {selectedRoom?.features?.map((feature, index) => (
-                  <li key={index} className="flex items-center">
-                    <ShieldCheckIcon className="h-4 w-4 mr-2 text-green-500" />
-                    {feature}
-                  </li>
-                ))}
-              </ul>
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="email" className="text-right text-sm">Email</label>
+              <input
+                id="email"
+                type="email"
+                value={userEmail}
+                onChange={(e) => setUserEmail(e.target.value)}
+                className="col-span-3 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+                disabled={!!user} // Disabled if user is logged in
+              />
+            </div>
+            
+            <div className="grid grid-cols-4 items-center gap-4">
+              <label htmlFor="purpose" className="text-right text-sm">Purpose</label>
+              <input
+                id="purpose"
+                value={purpose}
+                onChange={(e) => setPurpose(e.target.value)}
+                className="col-span-3 flex h-10 rounded-md border border-input bg-background px-3 py-2 text-sm"
+              />
             </div>
           </div>
           
           <DialogFooter>
-            <Button onClick={() => setIsRoomInfoOpen(false)}>
-              Close
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-      
-      {/* Booking Dialog */}
-      <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
-        <DialogContent className="sm:max-w-md">
-          <DialogHeader>
-            <DialogTitle className="text-xl">Book {selectedRoom?.name}</DialogTitle>
-            <DialogDescription className="text-gray-500">
-              {format(selectedDate, "EEEE, MMMM d, yyyy")}
-            </DialogDescription>
-          </DialogHeader>
-          
-          <div className="space-y-4 py-3">
-            <div className="space-y-2">
-              <h4 className="text-sm font-medium text-gray-700">Selected Time</h4>
-              <div className="flex items-center">
-                <Clock className="h-4 w-4 mr-2 text-blue-600" />
-                <span className="font-medium">
-                  {selectedTimeSlot !== null ? formatTimeSlot(selectedTimeSlot) : ""} - {getEndTime()}
-                </span>
-              </div>
-            </div>
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Duration</label>
-              <Select 
-                defaultValue="1" 
-                onValueChange={handleDurationChange}
-                disabled={selectedTimeSlot === null || !isTimeSlotAvailable(selectedRoom?.id || 0, selectedTimeSlot || 0)}
-              >
-                <SelectTrigger className="w-full border border-gray-200 rounded-md h-10">
-                  <SelectValue placeholder="Select duration" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="1">1 hour</SelectItem>
-                  {selectedTimeSlot !== null && selectedRoom && 
-                   isTimeSlotAvailable(selectedRoom.id, selectedTimeSlot) && 
-                   isTimeSlotAvailable(selectedRoom.id, selectedTimeSlot + 1) && (
-                    <SelectItem value="2">2 hours</SelectItem>
-                  )}
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Your Name</label>
-              <input 
-                type="text"
-                className={`w-full border border-gray-200 rounded-md px-3 py-2 h-10 ${user ? 'bg-gray-50' : ''}`}
-                value={userName}
-                onChange={(e) => setUserName(e.target.value)}
-                placeholder="Your full name"
-                disabled={!!user}
-              />
-              {user && <p className="text-sm text-gray-500 mt-1">Auto-filled from your profile</p>}
-            </div>
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Email</label>
-              <input 
-                type="email"
-                className={`w-full border border-gray-200 rounded-md px-3 py-2 h-10 ${user ? 'bg-gray-50' : ''}`}
-                value={userEmail}
-                onChange={(e) => setUserEmail(e.target.value)}
-                placeholder="Your email address"
-                disabled={!!user}
-              />
-              {user && <p className="text-sm text-gray-500 mt-1">Auto-filled from your profile</p>}
-            </div>
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-gray-700">Purpose (Optional)</label>
-              <input 
-                type="text"
-                className="w-full border border-gray-200 rounded-md px-3 py-2 h-10"
-                value={purpose}
-                onChange={(e) => setPurpose(e.target.value)}
-                placeholder="Study session, meeting, etc."
-              />
-            </div>
-          </div>
-          
-          <DialogFooter className="flex space-x-2 justify-end">
-            <Button variant="outline" onClick={() => setIsModalOpen(false)}>
-              Cancel
-            </Button>
-            <Button 
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-              onClick={handleBookingSubmit}
-            >
-              Confirm Booking
-            </Button>
+            <Button variant="outline" onClick={() => setIsModalOpen(false)}>Cancel</Button>
+            <Button onClick={handleBookingSubmit}>Book Now</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
       
       {/* Confirmation Dialog */}
       <Dialog open={isConfirmationOpen} onOpenChange={setIsConfirmationOpen}>
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-[425px]">
           <DialogHeader>
-            <DialogTitle className="text-xl text-green-600">Booking Confirmed!</DialogTitle>
-            <DialogDescription>
-              Your room has been reserved successfully.
-            </DialogDescription>
+            <DialogTitle className="text-green-600">Reservation Confirmed</DialogTitle>
           </DialogHeader>
-          
-          <div className="space-y-4 py-3 bg-green-50 p-4 rounded-md border border-green-100">
-            <div className="space-y-1">
-              <h4 className="text-sm font-medium text-gray-700">Room</h4>
-              <p className="font-medium">{selectedRoom?.name}</p>
-            </div>
-            
-            <div className="space-y-1">
-              <h4 className="text-sm font-medium text-gray-700">Date</h4>
-              <p>{format(selectedDate, "EEEE, MMMM d, yyyy")}</p>
-            </div>
-            
-            <div className="space-y-1">
-              <h4 className="text-sm font-medium text-gray-700">Time</h4>
-              <p>
-                {selectedTimeSlot !== null ? formatTimeSlot(selectedTimeSlot) : ""} - {getEndTime()}
-                ({selectedDuration} {selectedDuration === 1 ? 'hour' : 'hours'})
-              </p>
-            </div>
-            
-            <div className="space-y-1">
-              <h4 className="text-sm font-medium text-gray-700">Confirmation Number</h4>
-              <p className="font-mono font-medium">LIB-{Math.floor(100000 + Math.random() * 900000)}</p>
-            </div>
+          <div className="py-4">
+            <p className="mb-4">Your room has been successfully reserved!</p>
+            {selectedRoom && selectedTimeSlot !== null && (
+              <div className="bg-green-50 border border-green-100 rounded-md p-4">
+                <p className="font-semibold">{selectedRoom.name}</p>
+                <p className="text-sm text-gray-600">{format(selectedDate, 'EEEE, MMMM d, yyyy')}</p>
+                <p className="text-sm text-gray-600">
+                  {`${format(setHours(new Date(), selectedTimeSlot), 'h:00 a')} - ${format(setHours(new Date(), selectedTimeSlot + selectedDuration), 'h:00 a')}`}
+                </p>
+              </div>
+            )}
           </div>
-          
-          <p className="text-sm text-gray-500 mt-2">
-            A confirmation email has been sent to {userEmail}. Please arrive 5 minutes before your booking time.
-          </p>
-          
           <DialogFooter>
-            <Button 
-              className="bg-blue-600 hover:bg-blue-700 text-white"
-              onClick={closeConfirmation}
-            >
-              Done
-            </Button>
+            <Button onClick={() => setIsConfirmationOpen(false)}>Close</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </>
+    </div>
   );
 }
