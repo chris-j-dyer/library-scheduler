@@ -338,6 +338,31 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       const paddedHour = hour.toString().padStart(2, '0');
       const slotId = `${paddedRoomId}${paddedHour}${dateStr}`;
       occupiedSlots.push(slotId);
+      
+      // Directly update DOM elements if we can find them
+      // This gives immediate visual feedback without waiting for a re-render
+      const timeSlotElements = document.querySelectorAll(`td div.calendar-cell`);
+      timeSlotElements.forEach(element => {
+        const cell = element as HTMLElement;
+        const parentCell = cell.closest('td');
+        
+        // Check if this is a cell for the current room + hour
+        if (parentCell) {
+          const rowIndex = Array.from(parentCell.parentElement?.children || []).indexOf(parentCell);
+          if (rowIndex === hour - 8) { // Adjust for time slot offset (9am = index 1)
+            const row = parentCell.parentElement;
+            if (row) {
+              const roomCell = row.querySelector('td:first-child');
+              if (roomCell && roomCell.textContent?.includes(roomId.toString())) {
+                // This is the cell we want to update
+                cell.classList.remove('available');
+                cell.classList.add('occupied');
+                console.log(`Updated cell for room ${roomId}, hour ${hour} to occupied status`);
+              }
+            }
+          }
+        }
+      });
     }
     
     // Log the occupied slots
@@ -611,6 +636,12 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         // Save the clicked element to a ref so we can update it directly later
         const target = event.currentTarget as HTMLTableCellElement;
         window.__lastClickedCell = target;
+        
+        // Also store the cell's div content element
+        const cellContent = target.querySelector('div');
+        if (cellContent) {
+          window.__lastClickedCellContent = cellContent;
+        }
       }
       
       setSelectedRoom(room);
@@ -735,26 +766,40 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         // Create a new date object to force a rerender of the component
         setLocalDate(new Date(selectedDate));
         
-        // Also update the DOM directly if we have a reference to the clicked cell
+        // Immediately update the cell appearance in the DOM
         // But ONLY if we're still on the same date where the reservation was made
         const currentDateStr = format(selectedDate, 'yyyy-MM-dd');
         const reservationDateStr = format(new Date(newReservation.reservationDate), 'yyyy-MM-dd');
         
-        if (window.__lastClickedCell && currentDateStr === reservationDateStr) {
+        if (currentDateStr === reservationDateStr) {
           console.log(`DOM update allowed: current date ${currentDateStr} matches reservation date ${reservationDateStr}`);
           
-          // Find the cell content div which has the 'available' class
-          const cellContent = window.__lastClickedCell.querySelector('div');
-          if (cellContent) {
-            // Store reference in window so it can be referenced in tests
-            window.__lastClickedCellContent = cellContent;
-            
-            // Update the class - remove 'available' and add 'occupied'
-            cellContent.classList.remove('available');
-            cellContent.classList.add('occupied');
-            
-            console.log('Direct DOM update - changed class from available to occupied');
-          }
+          // Find all time slot cells and update the ones that belong to this reservation
+          const allCells = document.querySelectorAll('td div.calendar-cell');
+          allCells.forEach(el => {
+            const cell = el as HTMLElement;
+            const parentCell = cell.closest('td');
+            if (parentCell && cell.classList.contains('available')) {
+              const parentRow = parentCell.parentElement;
+              if (parentRow) {
+                // Get the room cell in this row
+                const roomCell = parentRow.querySelector('td:first-child');
+                if (roomCell && roomCell.textContent?.includes(selectedRoom.id.toString())) {
+                  // Get the hour index from the column position
+                  const cellIndex = Array.from(parentRow.children).indexOf(parentCell);
+                  const hour = cellIndex + 8; // Adjust based on time slot (9am = index 1)
+                  
+                  // Check if this hour is part of our reservation
+                  if (hour >= selectedTimeSlot && hour < selectedTimeSlot + selectedDuration) {
+                    // This is a cell we need to update
+                    cell.classList.remove('available');
+                    cell.classList.add('occupied');
+                    console.log(`Updated cell for room ${selectedRoom.id}, hour ${hour} to occupied status`);
+                  }
+                }
+              }
+            }
+          });
         } else {
           console.log(`DOM update skipped - current date (${currentDateStr}) different from reservation date (${reservationDateStr})`);
         }

@@ -35,17 +35,20 @@
 }
 
 .available {
-  background-color: #00a2ff;
+  background-color: #00a2ff !important;
+  cursor: pointer;
 }
 
 .occupied {
-  background-color: #e0e0e0;
+  background-color: #808080 !important;
   cursor: not-allowed;
+  pointer-events: none !important;
 }
 
 .weekend-closed {
-  background-color: #f7d9d9; /* Light red/pink background */
+  background-color: #f7d9d9 !important; /* Light red/pink background */
   cursor: not-allowed;
+  pointer-events: none !important;
   background-image: repeating-linear-gradient(
     45deg,
     transparent,
