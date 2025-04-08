@@ -310,80 +310,62 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     });
   }
   
-  // Create a state variable that directly tracks which room+hour slots are reserved
-  // This will be a Map where each key is roomId:hour and the value is true if reserved
-  // Keep a reference to the original reservations from the API
+  // 4. FIX state management for reservations:
+  // Create a state variable to store all reservations
   const [reservations, setReservations] = useState<Reservation[]>([]);
   
-  // This map will directly track which slots are reserved for immediate UI updates
-  const [reservedSlots, setReservedSlots] = useState<Map<string, boolean>>(new Map());
-  
-  // Create a function to generate slot IDs in a consistent way
-  const getSlotId = (roomId: number, hour: number) => `${roomId}:${hour}`;
-  
-  // Function to check if a slot is reserved
+  // Function to check if a specific slot is reserved (STEP 2: IMPLEMENT proper reservation check)
   const isSlotReserved = (roomId: number, hour: number) => {
-    const slotId = getSlotId(roomId, hour);
-    return reservedSlots.get(slotId) || false;
-  };
-  
-  // Function to mark a slot as reserved
-  const markSlotReserved = (roomId: number, hour: number) => {
-    setReservedSlots(prev => {
-      const newMap = new Map(prev); // Create a copy of the previous map
-      const slotId = getSlotId(roomId, hour);
-      newMap.set(slotId, true);
-      console.log(`Marking slot ${slotId} as reserved`);
-      return newMap;
+    // Use the .some() array method to check if ANY reservation matches this slot
+    return reservations.some(reservation => {
+      // Skip cancelled reservations
+      if (reservation.status === 'cancelled') return false;
+      
+      // Check if this reservation is for this room
+      if (reservation.roomId != roomId) return false; // Use loose equality (==) as instructed
+      
+      // Check if the date matches
+      const resDate = reservation.date || new Date(reservation.reservationDate);
+      if (!isSameDay(resDate, selectedDate)) return false;
+      
+      // Get the time range
+      const startTime = typeof reservation.startTime === 'string'
+        ? new Date(reservation.startTime)
+        : reservation.startTime;
+        
+      const endTime = typeof reservation.endTime === 'string'
+        ? new Date(reservation.endTime)
+        : reservation.endTime;
+      
+      // Get the hours
+      const startHour = startTime.getHours();
+      const endHour = endTime.getHours();
+      
+      // Check if this hour falls within the reservation's time range
+      return hour >= startHour && hour < endHour;
     });
   };
   
-  // Update both reservations and reserved slots when query data changes
+  // 5. VERIFY the component re-renders after state change - setup useEffect for initial data load
   useEffect(() => {
     if (reservationsQuery.data) {
-      console.log("Processing reservations data:", reservationsQuery.data.length);
+      console.log("Setting reservations data:", reservationsQuery.data.length, "items");
       
-      // Update the reservations array
+      // Update our state with the reservations data - this will trigger a re-render
       setReservations(reservationsQuery.data);
       
-      // Build a new map of reserved slots
-      const newReservedSlots = new Map<string, boolean>();
-      
-      // Process each reservation
+      // Debug log each reservation
       reservationsQuery.data.forEach(reservation => {
-        // Skip cancelled reservations
-        if (reservation.status === 'cancelled') return;
-        
-        // Get date from reservation
-        const resDate = reservation.date || new Date(reservation.reservationDate);
-        
-        // Only process reservations for the selected date
-        if (!isSameDay(resDate, selectedDate)) return;
-        
-        // Get start and end times
-        const startTime = typeof reservation.startTime === 'string' 
-          ? new Date(reservation.startTime) 
+        const startTime = typeof reservation.startTime === 'string'
+          ? new Date(reservation.startTime)
           : reservation.startTime;
           
         const endTime = typeof reservation.endTime === 'string'
           ? new Date(reservation.endTime)
           : reservation.endTime;
-        
-        // Get hours
-        const startHour = startTime.getHours();
-        const endHour = endTime.getHours();
-        
-        // Mark all slots between start and end as reserved
-        for (let hour = startHour; hour < endHour; hour++) {
-          const slotId = getSlotId(reservation.roomId, hour);
-          newReservedSlots.set(slotId, true);
-          console.log(`Marking slot ${slotId} as reserved from reservation #${reservation.id}`);
-        }
+          
+        console.log(`Loaded reservation #${reservation.id}: room=${reservation.roomId}, date=${reservation.reservationDate}, time=${startTime.getHours()}-${endTime.getHours()}, status=${reservation.status}`);
       });
-      
-      // Update state with new reserved slots
-      setReservedSlots(newReservedSlots);
-      console.log("Updated reserved slots map:", Array.from(newReservedSlots.entries()));
     }
   }, [reservationsQuery.data, selectedDate]);
   
@@ -724,7 +706,8 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     return isAvailable;
   };
   
-  // Generate schedule for each room using our reservedSlots Map
+  // 1. IDENTIFY the core issue: The time slots aren't changing color because the component 
+  // isn't correctly detecting which slots are reserved. Rewrite the schedule generator.
   const getRoomSchedule = (roomId: number) => {
     // Create array of time slots from 9am to 8pm
     const timeSlots: TimeSlot[] = [];
@@ -740,9 +723,8 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       
       // If it's not closed due to weekend hours, check if it's reserved
       if (isAvailable) {
-        // Check for an existing reservation in our dedicated reservedSlots state
-        const slotId = getSlotId(roomId, hour);
-        const isReserved = reservedSlots.get(slotId) || false;
+        // 2. IMPLEMENT a proper reservation check using the function we defined earlier
+        const isReserved = isSlotReserved(roomId, hour);
         isAvailable = !isReserved;
       }
       
@@ -754,9 +736,6 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       // Log the schedule for debugging
       console.log(`Room ${roomId}, Hour ${hour}: ${isAvailable ? 'Available' : 'Occupied'}`);
     }
-    
-    // Log all reserved slots for debugging
-    console.log("All reserved slots:", Array.from(reservedSlots.entries()));
     
     return timeSlots;
   };
@@ -900,11 +879,12 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         }
       );
       
-      // CRITICAL: Directly mark the reserved slots in our state
-      // This is the key change - immediately update the UI state for the slots
-      for (let hour = selectedTimeSlot; hour < selectedTimeSlot + selectedDuration; hour++) {
-        markSlotReserved(selectedRoom.id, hour);
-      }
+      // 4. FIX state management for reservations - add the new reservation to state
+      // CRITICAL: Immediately update the reservations state to include this new reservation
+      setReservations(prevReservations => {
+        console.log('Adding new reservation to state:', clientReservation);
+        return [...prevReservations, clientReservation];
+      });
       
       // Also invalidate the query to ensure it will be refetched next time
       // This ensures data consistency in case the server's response is different
@@ -1172,7 +1152,10 @@ export default function RoomList({ selectedDate }: RoomListProps) {
                   ? `Library closes at 5:00 PM on weekends`
                   : `Occupied at ${formatTimeSlot(slot.hour)}`;
               
+              // 3. ENSURE visual feedback works properly with CSS classes and inline styles
               let cellClass = 'calendar-cell';
+              
+              // Apply different CSS classes based on reservation status
               if (slot.isAvailable) {
                 cellClass += ' available';
               } else if (isWeekendAfterHours) {
@@ -1181,15 +1164,30 @@ export default function RoomList({ selectedDate }: RoomListProps) {
                 cellClass += ' occupied';
               }
               
+              // Set different background colors using inline styles
+              const cellStyle = {
+                backgroundColor: slot.isAvailable 
+                  ? '#3498db'  // blue for available
+                  : isWeekendAfterHours 
+                    ? '#a0a0a0' // light gray for weekend closed
+                    : '#808080' // dark gray for reserved
+              };
+              
               return (
                 <td 
                   key={index} 
                   className="p-0 border border-gray-200"
-                  onClick={(event) => handleTimeSlotClick(room.id, slot.hour, slot.isAvailable, event)}
+                  onClick={slot.isAvailable 
+                    ? (event) => handleTimeSlotClick(room.id, slot.hour, slot.isAvailable, event) 
+                    : undefined} // Disable click on reserved slots
                 >
                   <div 
                     className={cellClass}
+                    style={cellStyle} // Apply inline styles
                     title={cellTitle}
+                    data-room-id={room.id} // Add data attributes for easier DOM selection
+                    data-hour={slot.hour}
+                    data-reserved={!slot.isAvailable}
                   ></div>
                 </td>
               );
