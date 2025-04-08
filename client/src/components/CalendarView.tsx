@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight, RefreshCcw } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -6,32 +6,14 @@ import { Calendar } from "@/components/ui/calendar";
 import { format, addDays, isToday, isSameDay, startOfDay, addMonths, subDays } from "date-fns";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
-import { useAuth } from "@/hooks/use-auth";
 import RoomList from "./RoomList";
 
 export default function CalendarView() {
   const { toast } = useToast();
-  const { user } = useAuth();
   // Ensure we start with today's date (at midnight) to avoid any time-based comparison issues
   const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [showingWeek, setShowingWeek] = useState(true);
-  // Track if the date was changed to force re-renders when needed
-  const [dateChanged, setDateChanged] = useState(false);
-  
-  // Reset dateChanged flag after render to avoid infinite loops
-  useEffect(() => {
-    if (dateChanged) {
-      setDateChanged(false);
-    }
-  }, [dateChanged]);
-  
-  // Force a re-render when user changes (logs in/out)
-  useEffect(() => {
-    console.log("User state changed in CalendarView:", user ? user.username : "not logged in");
-    // This will trigger a re-render of the RoomList component with the current date
-    setSelectedDate(prev => new Date(prev));
-  }, [user]);
   
   const weekEndDate = addDays(selectedDate, 6);
   

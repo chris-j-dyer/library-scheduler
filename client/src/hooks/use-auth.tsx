@@ -1,4 +1,4 @@
-import { createContext, ReactNode, useContext, useState, useEffect } from "react";
+import { createContext, ReactNode, useContext } from "react";
 import {
   useQuery,
   useMutation,
@@ -42,7 +42,6 @@ type AuthContextType = {
   user: SafeUser | null;
   isLoading: boolean;
   error: Error | null;
-  authInitialized: boolean;
   loginMutation: UseMutationResult<SafeUser, Error, LoginData>;
   logoutMutation: UseMutationResult<void, Error, void>;
   registerMutation: UseMutationResult<SafeUser, Error, RegisterData>;
@@ -52,71 +51,32 @@ export const AuthContext = createContext<AuthContextType | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const { toast } = useToast();
-  const [authInitialized, setAuthInitialized] = useState(false);
-  
-  // We'll use this to track if the auth query has completed at least once
-  const [authQueryCompleted, setAuthQueryCompleted] = useState(false);
-  
-  console.log("AuthProvider rendering, authInitialized:", authInitialized);
   
   const {
     data: user,
     error,
     isLoading,
-    isSuccess,
-    isError,
   } = useQuery<SafeUser | null, Error>({
     queryKey: ["/api/user"],
     queryFn: getQueryFn({ on401: "returnNull" }),
-    retry: 1,
-    staleTime: 30000, // 30 seconds
   });
-
-  // Track when the query completes (success or error)
-  useEffect(() => {
-    if (!authQueryCompleted && (isSuccess || isError)) {
-      console.log("Auth query completed with status - success:", isSuccess, "error:", isError);
-      setAuthQueryCompleted(true);
-      
-      // After a small delay, mark auth as initialized
-      // This gives time for other components to react to the auth state
-      setTimeout(() => {
-        console.log("Setting authInitialized to true");
-        setAuthInitialized(true);
-      }, 100);
-    }
-  }, [isSuccess, isError, authQueryCompleted]);
 
   const loginMutation = useMutation<SafeUser, Error, LoginData>({
     mutationFn: async (credentials) => {
-      try {
-        console.log("Login mutation starting for user:", credentials.username);
-        const res = await apiRequest("POST", "/api/login", credentials);
-        const userData = await res.json();
-        console.log("Login mutation successful, received user data:", userData);
-        return userData;
-      } catch (error) {
-        console.error("Login mutation error:", error);
-        throw error;
-      }
+      const res = await apiRequest("POST", "/api/login", credentials);
+      return await res.json();
     },
     onSuccess: (user) => {
-      try {
-        console.log("Login onSuccess callback, updating query cache with user:", user.username);
-        queryClient.setQueryData(["/api/user"], user);
-        toast({
-          title: "Login successful",
-          description: `Welcome back, ${user.name || user.username}!`,
-        });
-      } catch (error) {
-        console.error("Error in login mutation onSuccess callback:", error);
-      }
+      queryClient.setQueryData(["/api/user"], user);
+      toast({
+        title: "Login successful",
+        description: `Welcome back, ${user.name || user.username}!`,
+      });
     },
     onError: (error) => {
-      console.error("Login error:", error);
       toast({
         title: "Login failed",
-        description: error.message || "An unexpected error occurred during login",
+        description: error.message,
         variant: "destructive",
       });
     },
@@ -124,34 +84,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const registerMutation = useMutation<SafeUser, Error, RegisterData>({
     mutationFn: async (userData) => {
-      try {
-        console.log("Register mutation starting for user:", userData.username);
-        const res = await apiRequest("POST", "/api/register", userData);
-        const newUser = await res.json();
-        console.log("Register mutation successful, received user data:", newUser);
-        return newUser;
-      } catch (error) {
-        console.error("Register mutation error:", error);
-        throw error;
-      }
+      const res = await apiRequest("POST", "/api/register", userData);
+      return await res.json();
     },
     onSuccess: (user) => {
-      try {
-        console.log("Register onSuccess callback, updating query cache with user:", user.username);
-        queryClient.setQueryData(["/api/user"], user);
-        toast({
-          title: "Registration successful",
-          description: `Welcome, ${user.name || user.username}!`,
-        });
-      } catch (error) {
-        console.error("Error in register mutation onSuccess callback:", error);
-      }
+      queryClient.setQueryData(["/api/user"], user);
+      toast({
+        title: "Registration successful",
+        description: `Welcome, ${user.name || user.username}!`,
+      });
     },
     onError: (error) => {
-      console.error("Registration error:", error);
       toast({
         title: "Registration failed",
-        description: error.message || "An unexpected error occurred during registration",
+        description: error.message,
         variant: "destructive",
       });
     },
@@ -159,60 +105,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logoutMutation = useMutation<void, Error, void>({
     mutationFn: async () => {
-      try {
-        console.log("Logout mutation starting");
-        await apiRequest("POST", "/api/logout");
-        console.log("Logout mutation successful");
-      } catch (error) {
-        console.error("Logout mutation error:", error);
-        throw error;
-      }
+      await apiRequest("POST", "/api/logout");
     },
     onSuccess: () => {
-      try {
-        console.log("Logout onSuccess callback, clearing user data from cache");
-        queryClient.setQueryData(["/api/user"], null);
-        toast({
-          title: "Logged out",
-          description: "You have been successfully logged out.",
-        });
-      } catch (error) {
-        console.error("Error in logout mutation onSuccess callback:", error);
-      }
+      queryClient.setQueryData(["/api/user"], null);
+      toast({
+        title: "Logged out",
+        description: "You have been successfully logged out.",
+      });
     },
     onError: (error) => {
-      console.error("Logout error:", error);
       toast({
         title: "Logout failed",
-        description: error.message || "An unexpected error occurred during logout",
+        description: error.message,
         variant: "destructive",
       });
     },
   });
 
-  // Safeguard - if we're in an error state, log the error
-  if (error) {
-    console.error("Auth provider error:", error);
-  }
-
-  // Safety check - make sure the user object is properly shaped if it exists
-  const safeUser = user ? (
-    typeof user === 'object' && user !== null ? user : null
-  ) : null;
-
-  if (safeUser) {
-    console.log("Auth provider has user:", safeUser.username);
-  } else if (!isLoading) {
-    console.log("Auth provider has no user and is not loading");
-  }
-
   return (
     <AuthContext.Provider
       value={{
-        user: safeUser,
+        user: user || null,
         isLoading,
         error,
-        authInitialized,
         loginMutation,
         logoutMutation,
         registerMutation,
@@ -224,16 +140,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 }
 
 export function useAuth() {
-  try {
-    const context = useContext(AuthContext);
-    if (!context) {
-      console.error("useAuth hook called outside of AuthProvider");
-      throw new Error("useAuth must be used within an AuthProvider");
-    }
-    return context;
-  } catch (error) {
-    console.error("Error in useAuth hook:", error);
-    // Re-throw the error to propagate it up
-    throw error;
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error("useAuth must be used within an AuthProvider");
   }
+  return context;
 }
