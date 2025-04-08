@@ -191,9 +191,35 @@ export default function CalendarView() {
         </div>
       )}
       
-      {/* Room availability schedule */}
       <div className="overflow-x-auto">
-        <RoomList selectedDate={selectedDate} />
+        <table className="w-full border-collapse border border-gray-200 rounded-lg overflow-hidden">
+          <thead>
+            <tr>
+              <th className="border border-gray-200 p-3 text-left w-72 bg-gray-50">Space</th>
+              <th className="border border-gray-200 p-3 text-center bg-gray-50" colSpan={12}>
+                {format(selectedDate, "EEEE, MMMM d, yyyy")}
+              </th>
+            </tr>
+            <tr>
+              <th className="border border-gray-200 bg-gray-50 p-2"></th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">9:00am</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">10:00am</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">11:00am</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">12:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">1:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">2:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">3:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">4:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">5:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">6:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">7:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">8:00pm</th>
+            </tr>
+          </thead>
+          <tbody>
+            <RoomList selectedDate={selectedDate} />
+          </tbody>
+        </table>
       </div>
     </div>
   );
