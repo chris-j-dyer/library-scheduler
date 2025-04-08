@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { UserIcon, ShieldCheckIcon, Info, Wifi, Tv, Clock } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -389,6 +389,90 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     };
   }, [selectedDate, queryClient, toast]);
   
+  // Create a direct room+timeslot mapping for each reservation
+  const buildAvailabilityMap = useMemo(() => {
+    // Create map to hold all availability data: Map<UniqueSlotId, boolean>
+    const availabilityMap = new Map<string, boolean>();
+    
+    // Function to generate a unique ID for each room+timeslot+date combination
+    const generateSlotId = (roomId: number, date: Date, hour: number) => {
+      const dateStr = format(date, 'yyyyMMdd');
+      const paddedRoomId = roomId.toString().padStart(2, '0');
+      const paddedHour = hour.toString().padStart(2, '0');
+      return `${paddedRoomId}${paddedHour}${dateStr}`;
+    };
+    
+    // Pre-populate all slots as available (except weekend after hours)
+    const selectedDateStr = format(selectedDate, 'yyyyMMdd');
+    for (const room of roomsData) {
+      for (let hour = 9; hour <= 20; hour++) {
+        const isWeekend = [0, 6].includes(selectedDate.getDay());
+        const isAfterWeekendHours = isWeekend && hour >= 17;
+        
+        // Generate a unique ID for this slot
+        const slotId = generateSlotId(room.id, selectedDate, hour);
+        
+        // Mark as available unless it's after hours on weekend
+        availabilityMap.set(slotId, !isAfterWeekendHours);
+      }
+    }
+    
+    // Mark booked slots as unavailable
+    console.log(`Marking reserved slots from ${reservations.length} reservations`);
+    for (const reservation of reservations) {
+      // Skip cancelled reservations
+      if (reservation.status === 'cancelled') {
+        console.log(`Skipping cancelled reservation #${reservation.id}`);
+        continue;
+      }
+
+      // Only process reservations for the selected date
+      const resDate = reservation.date || new Date(reservation.reservationDate);
+      if (!isSameDay(resDate, selectedDate)) {
+        continue;
+      }
+      
+      // Get times for this reservation
+      const startTime = typeof reservation.startTime === 'string' 
+        ? new Date(reservation.startTime) 
+        : reservation.startTime;
+        
+      const endTime = typeof reservation.endTime === 'string'
+        ? new Date(reservation.endTime)
+        : reservation.endTime;
+        
+      // Get start and end hours
+      const startHour = startTime.getHours();
+      const endHour = endTime.getHours();
+      
+      // Mark all hours in this reservation as unavailable
+      for (let hour = startHour; hour < endHour; hour++) {
+        const slotId = generateSlotId(reservation.roomId, selectedDate, hour);
+        availabilityMap.set(slotId, false);
+        console.log(`Marked slot ${slotId} as unavailable due to reservation #${reservation.id}`);
+      }
+    }
+    
+    return {
+      // Check if a slot is available
+      isSlotAvailable: (roomId: number, hour: number) => {
+        const slotId = generateSlotId(roomId, selectedDate, hour);
+        return availabilityMap.get(slotId) || false;
+      },
+      // Debug function to get all unavailable slots
+      getUnavailableSlots: () => {
+        return Array.from(availabilityMap.entries())
+          .filter(([_, isAvailable]) => !isAvailable)
+          .map(([slotId]) => slotId);
+      }
+    };
+  }, [reservations, selectedDate, roomsData]);
+  
+  // Simplified availability check function
+  const isTimeSlotAvailable = (roomId: number, hour: number) => {
+    return buildAvailabilityMap.isSlotAvailable(roomId, hour);
+  };
+  
   // Generate schedule for each room
   const getRoomSchedule = (roomId: number) => {
     // Create array of time slots from 9am to 8pm
@@ -400,10 +484,8 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       const isWeekend = [0, 6].includes(selectedDate.getDay()); // 0 = Sunday, 6 = Saturday
       const isAfterWeekendHours = isWeekend && hour >= 17; // 5pm and later on weekends
       
-      // Use the more robust isTimeSlotBookable function to check availability
-      // This function properly normalizes dates and handles date comparison more reliably
-      // If it's a weekend after hours, mark as unavailable regardless of bookings
-      const isAvailable = isAfterWeekendHours ? false : isTimeSlotBookable(roomId, hour);
+      // Get availability from our pre-computed map
+      const isAvailable = !isAfterWeekendHours && isTimeSlotAvailable(roomId, hour);
       
       timeSlots.push({
         hour,
@@ -411,8 +493,11 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       });
       
       // Log the schedule for debugging
-      console.log(`Room ${roomId}, Hour ${hour}: ${isAvailable ? 'Available' : isAfterWeekendHours ? 'Weekend after hours' : 'Occupied'}`);
+      console.log(`Room ${roomId}, Hour ${hour}: ${isAvailable ? 'Available' : 'Occupied'}`);
     }
+    
+    // Log all unavailable slots for debugging
+    console.log("All unavailable slots:", buildAvailabilityMap.getUnavailableSlots());
     
     return timeSlots;
   };
@@ -688,11 +773,17 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   // Function to get available durations for a time slot
   const getAvailableDurations = (roomId: number, startHour: number) => {
     const durations = [];
-    for (let hours = 1; hours <= 2; hours++) {
-      if (isTimeSlotBookable(roomId, startHour, hours)) {
-        durations.push(hours);
+    
+    // Add 1 hour option (always available if the current slot is available)
+    if (isTimeSlotAvailable(roomId, startHour)) {
+      durations.push(1);
+      
+      // Check if 2 hours is available (current hour and next hour)
+      if (startHour < 20 && isTimeSlotAvailable(roomId, startHour + 1)) {
+        durations.push(2);
       }
     }
+    
     return durations;
   };
   
@@ -836,14 +927,16 @@ export default function RoomList({ selectedDate }: RoomListProps) {
               <Select 
                 defaultValue="1" 
                 onValueChange={handleDurationChange}
-                disabled={selectedTimeSlot === null || !isTimeSlotBookable(selectedRoom?.id || 0, selectedTimeSlot || 0, 2)}
+                disabled={selectedTimeSlot === null || !isTimeSlotAvailable(selectedRoom?.id || 0, selectedTimeSlot || 0)}
               >
                 <SelectTrigger className="w-full border border-gray-200 rounded-md h-10">
                   <SelectValue placeholder="Select duration" />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="1">1 hour</SelectItem>
-                  {isTimeSlotBookable(selectedRoom?.id || 0, selectedTimeSlot || 0, 2) && (
+                  {selectedTimeSlot !== null && selectedRoom && 
+                   isTimeSlotAvailable(selectedRoom.id, selectedTimeSlot) && 
+                   isTimeSlotAvailable(selectedRoom.id, selectedTimeSlot + 1) && (
                     <SelectItem value="2">2 hours</SelectItem>
                   )}
                 </SelectContent>
