@@ -10,7 +10,8 @@ import RoomList from "./RoomList";
 
 export default function CalendarView() {
   const { toast } = useToast();
-  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
+  // Ensure we start with today's date (at midnight) to avoid any time-based comparison issues
+  const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [showingWeek, setShowingWeek] = useState(true);
   
@@ -20,7 +21,41 @@ export default function CalendarView() {
     // The text in the button is reversed from the state:
     // When showingWeek=true, button says "Day", and we should move by 1 day
     // When showingWeek=false, button says "Week", and we should move by 7 days
-    setSelectedDate(prev => subDays(prev, !showingWeek ? 7 : 1));
+    const daysToSubtract = !showingWeek ? 7 : 1;
+    const newDate = subDays(selectedDate, daysToSubtract);
+    
+    // Prevent navigation to dates in the past
+    const today = startOfDay(new Date());
+    
+    // If we're in week view (when showingWeek=false and button says "Week"), 
+    // we need to ensure that the entire week is not in the past
+    if (!showingWeek) {
+      // In week view, we need to ensure that the first day of the week is not before today
+      if (newDate < today) {
+        // If we would navigate to a week containing dates before today, set the date to today
+        setSelectedDate(today);
+        toast({
+          title: "Cannot view past dates",
+          description: "You can only view today and future dates",
+          variant: "destructive"
+        });
+        return;
+      }
+    } else {
+      // In day view, simply check if the new date is before today
+      if (newDate < today) {
+        // If we would navigate to a date before today, set the date to today
+        setSelectedDate(today);
+        toast({
+          title: "Cannot view past dates",
+          description: "You can only view today and future dates",
+          variant: "destructive"
+        });
+        return;
+      }
+    }
+    
+    setSelectedDate(newDate);
   };
   
   const handleNext = () => {
@@ -61,9 +96,11 @@ export default function CalendarView() {
   };
   
   const resetView = () => {
+    // Reset to today's date
+    setSelectedDate(startOfDay(new Date()));
     toast({
       title: "View reset",
-      description: "Calendar view has been refreshed"
+      description: "Calendar has been reset to today's date"
     });
   };
   
@@ -98,7 +135,11 @@ export default function CalendarView() {
                 selected={selectedDate}
                 onSelect={handleDateSelect}
                 initialFocus
-                disabled={(date) => date < subDays(new Date(), 1)}
+                // Disable all dates that are before today (comparing at midnight)
+                disabled={(date) => {
+                  const today = startOfDay(new Date());
+                  return startOfDay(date) < today;
+                }}
               />
             </PopoverContent>
           </Popover>
@@ -108,7 +149,8 @@ export default function CalendarView() {
               variant="outline" 
               className="border border-gray-200 px-3 py-2 rounded-l-md h-10 hover:bg-gray-100 transition-colors"
               onClick={handlePrevious}
-              disabled={isToday(selectedDate) || selectedDate < new Date()}
+              // Disable if we're on the current day or if the selected date is somehow in the past
+              disabled={isToday(selectedDate)}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
