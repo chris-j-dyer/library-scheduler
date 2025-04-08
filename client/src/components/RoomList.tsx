@@ -778,9 +778,9 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       
       {/* Room List */}
       {!reservationsQuery.isLoading && !reservationsQuery.isError && (
-        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-1">
+        <div className="grid gap-6 md:grid-cols-1 lg:grid-cols-1 w-full">
           {roomsData.map(room => (
-            <div key={room.id} className="bg-white shadow-sm rounded-lg border p-6">
+            <div key={room.id} className="bg-white shadow-sm rounded-lg border p-6 w-full">
               <div className="flex justify-between items-start mb-4">
                 <div>
                   <h3 className="text-xl font-semibold">{room.name}</h3>
@@ -791,12 +791,12 @@ export default function RoomList({ selectedDate }: RoomListProps) {
                   </div>
                 </div>
                 <div className="flex items-start space-x-2">
-                  {room.features.includes("WiFi") && (
+                  {room.features && room.features.includes("WiFi") && (
                     <div className="bg-gray-100 rounded-full p-2" title="WiFi Available">
                       <Wifi className="h-4 w-4 text-gray-600" />
                     </div>
                   )}
-                  {room.features.includes("TV with HDMI") && (
+                  {room.features && room.features.includes("TV with HDMI") && (
                     <div className="bg-gray-100 rounded-full p-2" title="TV with HDMI">
                       <Tv className="h-4 w-4 text-gray-600" />
                     </div>
@@ -821,7 +821,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
                       <div className="mt-4">
                         <h4 className="font-medium text-sm mb-2">Room Features</h4>
                         <ul className="list-disc list-inside text-sm text-gray-600 space-y-1">
-                          {room.features.map((feature, index) => (
+                          {room.features && room.features.map((feature, index) => (
                             <li key={index}>{feature}</li>
                           ))}
                         </ul>
