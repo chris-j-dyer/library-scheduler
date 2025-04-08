@@ -410,10 +410,20 @@ export default function RoomList({ selectedDate }: RoomListProps) {
             
             // Force a refresh if slots were changed
             if (slotsChanged) {
-              setTimeout(() => {
-                // Force component to re-render
-                setLocalDate(new Date(selectedDate));
-              }, 500);
+              // Check if the reservation is for the current selected date
+              const currentDateStr = format(selectedDate, 'yyyy-MM-dd');
+              const reservationDateStr = format(reservationDate, 'yyyy-MM-dd');
+              
+              if (currentDateStr === reservationDateStr) {
+                console.log(`WebSocket: DOM update allowed for date ${currentDateStr}`);
+                
+                setTimeout(() => {
+                  // Force component to re-render
+                  setLocalDate(new Date(selectedDate));
+                }, 500);
+              } else {
+                console.log(`WebSocket: DOM update skipped - current date ${currentDateStr} different from reservation date ${reservationDateStr}`);
+              }
             }
           }
         } else if (message.type === 'cancelled_reservation') {
@@ -421,10 +431,16 @@ export default function RoomList({ selectedDate }: RoomListProps) {
           const reservation = message.data;
           const reservationDate = new Date(reservation.reservationDate);
           
-          if (isSameDay(reservationDate, selectedDate)) {
+          // Check if this cancellation affects the currently displayed date
+          const currentDateStr = format(selectedDate, 'yyyy-MM-dd');
+          const reservationDateStr = format(reservationDate, 'yyyy-MM-dd');
+            
+          if (currentDateStr === reservationDateStr) {
+            console.log(`Cancellation affects current date: ${currentDateStr}`);
+            
             // Invalidate the query for the selected date
             queryClient.invalidateQueries({ 
-              queryKey: ['/api/reservations/by-date', format(selectedDate, 'yyyy-MM-dd')] 
+              queryKey: ['/api/reservations/by-date', currentDateStr] 
             });
             
             // Force a refresh
@@ -432,12 +448,15 @@ export default function RoomList({ selectedDate }: RoomListProps) {
               // Force component to re-render
               setLocalDate(new Date(selectedDate));
             }, 500);
-            
-            toast({
-              title: "Reservation Cancelled",
-              description: `A reservation for Room ${reservation.roomId} has been cancelled`,
-            });
+          } else {
+            console.log(`Cancellation for different date (${reservationDateStr}) - not affecting UI`);
           }
+          
+          // Always show the toast
+          toast({
+            title: "Reservation Cancelled",
+            description: `A reservation for Room ${reservation.roomId} has been cancelled`,
+          });
         }
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
@@ -717,7 +736,13 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         setLocalDate(new Date(selectedDate));
         
         // Also update the DOM directly if we have a reference to the clicked cell
-        if (window.__lastClickedCell) {
+        // But ONLY if we're still on the same date where the reservation was made
+        const currentDateStr = format(selectedDate, 'yyyy-MM-dd');
+        const reservationDateStr = format(new Date(newReservation.reservationDate), 'yyyy-MM-dd');
+        
+        if (window.__lastClickedCell && currentDateStr === reservationDateStr) {
+          console.log(`DOM update allowed: current date ${currentDateStr} matches reservation date ${reservationDateStr}`);
+          
           // Find the cell content div which has the 'available' class
           const cellContent = window.__lastClickedCell.querySelector('div');
           if (cellContent) {
@@ -730,6 +755,8 @@ export default function RoomList({ selectedDate }: RoomListProps) {
             
             console.log('Direct DOM update - changed class from available to occupied');
           }
+        } else {
+          console.log(`DOM update skipped - current date (${currentDateStr}) different from reservation date (${reservationDateStr})`);
         }
       }, 500);
       
