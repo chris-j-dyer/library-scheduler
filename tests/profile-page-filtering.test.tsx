@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 
-// Simple mock for the toast functionality
+// Mock toast without accessing the actual hook
 const mockToast = vi.fn();
 vi.mock('@/hooks/use-toast', () => ({
   useToast: () => ({
@@ -11,19 +11,11 @@ vi.mock('@/hooks/use-toast', () => ({
   })
 }));
 
-// Mock useAuth hook
-vi.mock('@/hooks/use-auth', () => ({
-  useAuth: () => ({
-    user: {
-      id: 1,
-      username: 'testuser',
-      name: 'Test User'
-    }
-  })
-}));
-
 // Simple component to test reservation filtering
 const ProfileFilteringTest = () => {
+  // Use an explicit date to avoid browser environment differences
+  const currentDate = new Date('2025-05-01T00:00:00');
+  
   const [reservations, setReservations] = React.useState([
     {
       id: 1,
@@ -54,12 +46,13 @@ const ProfileFilteringTest = () => {
     }
   ]);
 
+  // Use the fixed current date for consistent comparison
   const upcomingReservations = reservations
-    .filter(res => res.status !== 'cancelled' && new Date(res.startTime) > new Date())
+    .filter(res => res.status !== 'cancelled' && new Date(res.startTime) > currentDate)
     .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
 
   const pastReservations = reservations
-    .filter(res => res.status !== 'cancelled' && new Date(res.endTime) < new Date())
+    .filter(res => res.status !== 'cancelled' && new Date(res.endTime) < currentDate)
     .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
     
   const cancelReservation = (id: number) => {
@@ -80,7 +73,7 @@ const ProfileFilteringTest = () => {
       
       <h2>Upcoming Reservations</h2>
       {upcomingReservations.length === 0 ? (
-        <p>No upcoming reservations</p>
+        <p data-testid="no-upcoming">No upcoming reservations</p>
       ) : (
         <div>
           {upcomingReservations.map(reservation => (
@@ -88,7 +81,12 @@ const ProfileFilteringTest = () => {
               <h3>{reservation.purpose}</h3>
               <p>{reservation.roomName}</p>
               <p>{reservation.startTime.toLocaleString()}</p>
-              <button onClick={() => cancelReservation(reservation.id)}>Cancel</button>
+              <button 
+                onClick={() => cancelReservation(reservation.id)} 
+                data-testid={`cancel-${reservation.id}`}
+              >
+                Cancel
+              </button>
             </div>
           ))}
         </div>
@@ -96,7 +94,7 @@ const ProfileFilteringTest = () => {
       
       <h2>Past Reservations</h2>
       {pastReservations.length === 0 ? (
-        <p>No past reservations</p>
+        <p data-testid="no-past">No past reservations</p>
       ) : (
         <div>
           {pastReservations.map(reservation => (
@@ -116,16 +114,8 @@ describe('Profile Page Reservation Filtering', () => {
   beforeEach(() => {
     // Reset mocks
     vi.clearAllMocks();
-    
-    // Set a consistent date for tests
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date('2025-05-01T00:00:00'));
   });
   
-  afterEach(() => {
-    vi.useRealTimers();
-  });
-
   it('shows only non-cancelled upcoming reservations', () => {
     render(<ProfileFilteringTest />);
     
@@ -139,25 +129,28 @@ describe('Profile Page Reservation Filtering', () => {
 
   it('removes a reservation from the list when cancelled', async () => {
     const user = userEvent.setup();
-    const { getByTestId, queryByTestId, getAllByText } = render(<ProfileFilteringTest />);
+    render(<ProfileFilteringTest />);
     
-    // Explicitly check one at a time to avoid timing issues
-    expect(getByTestId('upcoming-1')).toBeInTheDocument();
-    expect(getByTestId('upcoming-2')).toBeInTheDocument();
+    // Verify initial state
+    expect(screen.getByTestId('upcoming-1')).toBeInTheDocument();
+    expect(screen.getByTestId('upcoming-2')).toBeInTheDocument();
     
-    // Find cancel buttons and click the first one
-    const cancelButtons = getAllByText('Cancel');
-    await user.click(cancelButtons[0]);
+    // Find and click the cancel button for reservation 1
+    await user.click(screen.getByTestId('cancel-1'));
     
-    // Check that the correct reservation was removed and another one is still there
-    expect(queryByTestId('upcoming-1')).not.toBeInTheDocument();
-    expect(getByTestId('upcoming-2')).toBeInTheDocument();
+    // After cancellation, reservation 1 should be removed
+    await waitFor(() => {
+      expect(screen.queryByTestId('upcoming-1')).not.toBeInTheDocument();
+    });
     
-    // Check toast notification
+    // Reservation 2 should still exist
+    expect(screen.getByTestId('upcoming-2')).toBeInTheDocument();
+    
+    // Toast should have been called with correct message
     expect(mockToast).toHaveBeenCalledWith(
       expect.objectContaining({
         title: 'Reservation cancelled'
       })
     );
-  }, 10000);
+  });
 });

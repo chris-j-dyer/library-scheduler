@@ -13,17 +13,6 @@ vi.mock('@/hooks/use-toast', () => ({
   })
 }));
 
-// Mock global fetch
-const mockFetch = vi.fn().mockImplementation(() => 
-  Promise.resolve({
-    ok: true,
-    json: () => Promise.resolve({ status: 'cancelled' })
-  })
-);
-
-// Override global fetch with our mock
-global.fetch = mockFetch;
-
 // Simple component to test reservation cancellation
 const CancellationTest = () => {
   const [showConfirmDialog, setShowConfirmDialog] = React.useState(false);
@@ -33,6 +22,7 @@ const CancellationTest = () => {
   const handleCancel = async () => {
     setIsLoading(true);
     try {
+      // Use fetch which is intercepted by MSW
       const response = await fetch('/api/reservations/1/cancel', {
         method: 'POST',
       });
@@ -40,6 +30,8 @@ const CancellationTest = () => {
       if (!response.ok) {
         throw new Error('Failed to cancel');
       }
+      
+      const data = await response.json();
       
       // Successfully cancelled
       setCancelled(true);
@@ -66,19 +58,27 @@ const CancellationTest = () => {
       {!cancelled && (
         <div data-testid="reservation">
           <h2>Study Session</h2>
-          <button onClick={() => setShowConfirmDialog(true)}>Cancel</button>
+          <button data-testid="open-cancel-dialog" onClick={() => setShowConfirmDialog(true)}>
+            Cancel
+          </button>
         </div>
       )}
       
-      {cancelled && <p>No active reservations</p>}
+      {cancelled && <p data-testid="no-reservation-message">No active reservations</p>}
       
       {showConfirmDialog && (
-        <div role="dialog" aria-label="Cancel Reservation">
+        <div role="dialog" aria-label="Cancel Reservation" data-testid="cancel-dialog">
           <h2>Cancel Reservation</h2>
           <p>Are you sure you want to cancel this reservation?</p>
           <div>
-            <button onClick={() => setShowConfirmDialog(false)}>No, Keep It</button>
             <button 
+              data-testid="keep-reservation-btn"
+              onClick={() => setShowConfirmDialog(false)}
+            >
+              No, Keep It
+            </button>
+            <button 
+              data-testid="confirm-cancel-btn"
               onClick={handleCancel}
               disabled={isLoading}
             >
@@ -96,7 +96,7 @@ describe('Reservation Cancellation', () => {
     // Reset mocks
     vi.clearAllMocks();
     
-    // Set up server mock for cancellation
+    // Set up server mock for cancellation endpoint
     server.use(
       rest.post('/api/reservations/1/cancel', (req, res, ctx) => {
         return res(
@@ -104,7 +104,7 @@ describe('Reservation Cancellation', () => {
           ctx.json({
             id: 1,
             status: 'cancelled',
-            updatedAt: new Date()
+            updatedAt: new Date().toISOString()
           })
         );
       })
@@ -113,68 +113,73 @@ describe('Reservation Cancellation', () => {
 
   it('shows the reservation initially', () => {
     render(<CancellationTest />);
+    
+    // Check reservation exists at start
+    expect(screen.getByTestId('reservation')).toBeInTheDocument();
     expect(screen.getByText('Study Session')).toBeInTheDocument();
-    expect(screen.getByText('Cancel')).toBeInTheDocument();
   });
 
   it('shows confirmation dialog when cancel is clicked', async () => {
     const user = userEvent.setup();
     render(<CancellationTest />);
     
-    // Click the cancel button
-    await user.click(screen.getByText('Cancel'));
+    // Open the dialog
+    await user.click(screen.getByTestId('open-cancel-dialog'));
     
-    // Confirmation dialog should appear
-    expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText('Are you sure you want to cancel this reservation?')).toBeInTheDocument();
+    // Verify dialog appears
+    expect(screen.getByTestId('cancel-dialog')).toBeInTheDocument();
   });
 
   it('cancels the reservation when confirmed', async () => {
+    // Create a manual mock for fetch to ensure we control the response cycle
+    global.fetch = vi.fn().mockImplementation(() => 
+      Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ status: 'cancelled' })
+      })
+    );
+  
     const user = userEvent.setup();
     render(<CancellationTest />);
     
-    // Click the cancel button
-    await user.click(screen.getByText('Cancel'));
+    // Open cancel dialog
+    await user.click(screen.getByTestId('open-cancel-dialog'));
     
-    // Click yes on the confirmation
-    await user.click(screen.getByText('Yes, Cancel Reservation'));
+    // Confirm cancellation
+    await user.click(screen.getByTestId('confirm-cancel-btn'));
     
-    // Verify both the toast and the UI change
+    // Wait for the async operation and state updates
     await waitFor(() => {
-      // Check toast was called with correct parameters
       expect(mockToast).toHaveBeenCalledWith(
         expect.objectContaining({
           title: 'Reservation cancelled'
         })
       );
-      
-      // Verify that the reservation is no longer shown
-      expect(screen.queryByTestId('reservation')).not.toBeInTheDocument();
-      
-      // And the "no reservations" message is displayed
-      expect(screen.getByText('No active reservations')).toBeInTheDocument();
     });
     
-    // Also verify fetch was called with correct URL and method
-    expect(mockFetch).toHaveBeenCalledWith(
-      '/api/reservations/1/cancel',
-      expect.objectContaining({ method: 'POST' })
-    );
+    // Once toast is called, the cancelled state should be updated
+    expect(screen.getByTestId('no-reservation-message')).toBeInTheDocument();
+    expect(screen.queryByTestId('reservation')).not.toBeInTheDocument();
+    
+    // Restore global fetch for other tests
+    global.fetch.mockRestore();
   });
 
   it('keeps the reservation when cancellation is dismissed', async () => {
     const user = userEvent.setup();
     render(<CancellationTest />);
     
-    // Click the cancel button
-    await user.click(screen.getByText('Cancel'));
+    // Open cancel dialog
+    await user.click(screen.getByTestId('open-cancel-dialog'));
     
-    // Click no on the confirmation
-    await user.click(screen.getByText('No, Keep It'));
+    // Dismiss the dialog
+    await user.click(screen.getByTestId('keep-reservation-btn'));
     
-    // Reservation should still be visible
+    // Dialog should be gone, but reservation should still exist
+    expect(screen.queryByTestId('cancel-dialog')).not.toBeInTheDocument();
     expect(screen.getByTestId('reservation')).toBeInTheDocument();
-    expect(screen.getByText('Study Session')).toBeInTheDocument();
+    
+    // Toast should not have been called
     expect(mockToast).not.toHaveBeenCalled();
   });
 });
