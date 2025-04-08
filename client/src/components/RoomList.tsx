@@ -589,21 +589,21 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       
       console.log(`Checking if hour ${currentHour} is bookable for room ${roomId}`);
       
-      // Group and sort reservations by ID to find the most recent status
-      // This implements the append-only pattern where newer rows override older ones
-      const roomReservations = reservations
-        .filter(r => r.roomId === roomId)
-        .sort((a, b) => b.id - a.id); // Sort descending by ID (newest first)
+      // Get all reservations for this room
+      const roomReservations = reservations.filter(r => r.roomId === roomId);
       
       // Check if any active reservations overlap with this time slot
       const isReserved = roomReservations.some(reservation => {
         // Skip cancelled reservations - they don't block time slots
         if (reservation.status === 'cancelled') {
+          console.log(`Reservation ${reservation.id} is cancelled, skipping`);
           return false;
         }
         
+        // Get the reservation date (both from reservation.date or reservation.reservationDate)
+        const reservationDate = reservation.date || new Date(reservation.reservationDate);
+        
         // Normalize dates for comparison to handle timezone issues
-        const reservationDate = new Date(reservation.date);
         const formattedReservationDate = format(reservationDate, 'yyyy-MM-dd');
         const formattedSelectedDate = format(selectedDate, 'yyyy-MM-dd');
         
@@ -613,22 +613,36 @@ export default function RoomList({ selectedDate }: RoomListProps) {
           return false;
         }
         
+        // Convert reservation times to Date objects if they're not already
+        const startTime = reservation.startTime instanceof Date 
+          ? reservation.startTime 
+          : new Date(reservation.startTime);
+        
+        const endTime = reservation.endTime instanceof Date 
+          ? reservation.endTime 
+          : new Date(reservation.endTime);
+        
         // Get hours for comparison
-        const startHour = reservation.startTime.getHours();
-        const endHour = reservation.endTime.getHours();
+        const startHour = startTime.getHours();
+        const endHour = endTime.getHours();
         
         // Log the comparison for debugging
-        console.log(`Comparing hour ${currentHour} with reservation hours: ${startHour}-${endHour} (status: ${reservation.status || 'confirmed'})`);
+        console.log(`Comparing hour ${currentHour} with reservation #${reservation.id} hours: ${startHour}-${endHour} (status: ${reservation.status || 'confirmed'})`);
         
         // Check if current hour falls within the reservation time range
         const isOverlapping = currentHour >= startHour && currentHour < endHour;
         if (isOverlapping) {
-          console.log(`Hour ${currentHour} is reserved for room ${roomId}`);
+          console.log(`Hour ${currentHour} is reserved for room ${roomId} by reservation #${reservation.id}`);
+          return true;
         }
-        return isOverlapping;
+        
+        return false;
       });
       
-      if (isReserved) return false;
+      if (isReserved) {
+        console.log(`Hour ${currentHour} for room ${roomId} is NOT available due to reservation`);
+        return false;
+      }
     }
     
     return true;
