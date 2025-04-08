@@ -310,30 +310,82 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     });
   }
   
-  // STEP 1 & 2: Create a state variable for reservations and ensure it's initialized as an empty array
+  // Create a state variable that directly tracks which room+hour slots are reserved
+  // This will be a Map where each key is roomId:hour and the value is true if reserved
+  // Keep a reference to the original reservations from the API
   const [reservations, setReservations] = useState<Reservation[]>([]);
   
-  // STEP 6: Add a useEffect to watch reservations changes
-  useEffect(() => {
-    console.log("Reservations state changed:", reservations);
-    console.log("Current reservations:", reservations);
-    console.log("Is reservations an array?", Array.isArray(reservations));
-    console.log("Reservations length:", reservations?.length);
-  }, [reservations]);
+  // This map will directly track which slots are reserved for immediate UI updates
+  const [reservedSlots, setReservedSlots] = useState<Map<string, boolean>>(new Map());
   
-  // STEP 5: Add forceUpdate state to force re-render after state changes
-  const [forceUpdate, setForceUpdate] = useState(0);
+  // Create a function to generate slot IDs in a consistent way
+  const getSlotId = (roomId: number, hour: number) => `${roomId}:${hour}`;
   
-  // Update reservations state when the query data changes
+  // Function to check if a slot is reserved
+  const isSlotReserved = (roomId: number, hour: number) => {
+    const slotId = getSlotId(roomId, hour);
+    return reservedSlots.get(slotId) || false;
+  };
+  
+  // Function to mark a slot as reserved
+  const markSlotReserved = (roomId: number, hour: number) => {
+    setReservedSlots(prev => {
+      const newMap = new Map(prev); // Create a copy of the previous map
+      const slotId = getSlotId(roomId, hour);
+      newMap.set(slotId, true);
+      console.log(`Marking slot ${slotId} as reserved`);
+      return newMap;
+    });
+  };
+  
+  // Update both reservations and reserved slots when query data changes
   useEffect(() => {
     if (reservationsQuery.data) {
-      console.log("Setting reservations from query data:", reservationsQuery.data.length);
-      console.log("Before updating from query, state:", reservations);
+      console.log("Processing reservations data:", reservationsQuery.data.length);
+      
+      // Update the reservations array
       setReservations(reservationsQuery.data);
-      // Force re-render with a dummy state update
-      setForceUpdate(prev => prev + 1);
+      
+      // Build a new map of reserved slots
+      const newReservedSlots = new Map<string, boolean>();
+      
+      // Process each reservation
+      reservationsQuery.data.forEach(reservation => {
+        // Skip cancelled reservations
+        if (reservation.status === 'cancelled') return;
+        
+        // Get date from reservation
+        const resDate = reservation.date || new Date(reservation.reservationDate);
+        
+        // Only process reservations for the selected date
+        if (!isSameDay(resDate, selectedDate)) return;
+        
+        // Get start and end times
+        const startTime = typeof reservation.startTime === 'string' 
+          ? new Date(reservation.startTime) 
+          : reservation.startTime;
+          
+        const endTime = typeof reservation.endTime === 'string'
+          ? new Date(reservation.endTime)
+          : reservation.endTime;
+        
+        // Get hours
+        const startHour = startTime.getHours();
+        const endHour = endTime.getHours();
+        
+        // Mark all slots between start and end as reserved
+        for (let hour = startHour; hour < endHour; hour++) {
+          const slotId = getSlotId(reservation.roomId, hour);
+          newReservedSlots.set(slotId, true);
+          console.log(`Marking slot ${slotId} as reserved from reservation #${reservation.id}`);
+        }
+      });
+      
+      // Update state with new reserved slots
+      setReservedSlots(newReservedSlots);
+      console.log("Updated reserved slots map:", Array.from(newReservedSlots.entries()));
     }
-  }, [reservationsQuery.data]);
+  }, [reservationsQuery.data, selectedDate]);
   
   // Function to mark a reservation in the availability map
   const markReservationSlots = useCallback((reservation: any, force = false) => {
@@ -672,7 +724,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     return isAvailable;
   };
   
-  // Generate schedule for each room
+  // Generate schedule for each room using our reservedSlots Map
   const getRoomSchedule = (roomId: number) => {
     // Create array of time slots from 9am to 8pm
     const timeSlots: TimeSlot[] = [];
@@ -683,8 +735,16 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       const isWeekend = [0, 6].includes(selectedDate.getDay()); // 0 = Sunday, 6 = Saturday
       const isAfterWeekendHours = isWeekend && hour >= 17; // 5pm and later on weekends
       
-      // Get availability from our pre-computed map
-      const isAvailable = !isAfterWeekendHours && isTimeSlotAvailable(roomId, hour);
+      // First check weekend hours - these are always closed
+      let isAvailable = !isAfterWeekendHours;
+      
+      // If it's not closed due to weekend hours, check if it's reserved
+      if (isAvailable) {
+        // Check for an existing reservation in our dedicated reservedSlots state
+        const slotId = getSlotId(roomId, hour);
+        const isReserved = reservedSlots.get(slotId) || false;
+        isAvailable = !isReserved;
+      }
       
       timeSlots.push({
         hour,
@@ -695,8 +755,8 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       console.log(`Room ${roomId}, Hour ${hour}: ${isAvailable ? 'Available' : 'Occupied'}`);
     }
     
-    // Log all unavailable slots for debugging
-    console.log("All unavailable slots:", buildAvailabilityMap.getUnavailableSlots());
+    // Log all reserved slots for debugging
+    console.log("All reserved slots:", Array.from(reservedSlots.entries()));
     
     return timeSlots;
   };
@@ -824,9 +884,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         endTime: format(clientReservation.endTime, 'HH:mm:ss')
       });
       
-      // STEP 3: Trace a reservation through the system
-      console.log("Before reservation, state:", reservations);
-      console.log("Adding reservation:", {
+      console.log("New reservation created:", {
         roomId: selectedRoom.id, 
         startHour: selectedTimeSlot,
         endHour: selectedTimeSlot + selectedDuration,
@@ -842,26 +900,17 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         }
       );
       
-      // CRITICAL: Update our local state directly to trigger UI updates
-      // This ensures the component re-renders with the new reservation included
-      setReservations(prevReservations => {
-        console.log('Adding new reservation to local state:', newReservation);
-        const newState = [...prevReservations, newReservation];
-        console.log("New reservations state:", newState);
-        return newState;
-      });
+      // CRITICAL: Directly mark the reserved slots in our state
+      // This is the key change - immediately update the UI state for the slots
+      for (let hour = selectedTimeSlot; hour < selectedTimeSlot + selectedDuration; hour++) {
+        markSlotReserved(selectedRoom.id, hour);
+      }
       
       // Also invalidate the query to ensure it will be refetched next time
       // This ensures data consistency in case the server's response is different
       queryClient.invalidateQueries({ 
         queryKey: ['/api/reservations/by-date', formattedDate] 
       });
-      
-      // STEP 5: Force a re-render after state change
-      setForceUpdate(prev => prev + 1);
-      
-      // Mark this reservation's slots
-      markReservationSlots(newReservation, true);
       
       // Force a rerender to update the UI
       setTimeout(() => {
