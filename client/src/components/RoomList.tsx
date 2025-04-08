@@ -706,24 +706,24 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       });
       
       // Mark slots as manually booked in our state
-  const newBookedSlots = new Map(manuallyBookedSlots);
-  
-  // Get the time range from the reservation
-  const startHour = startDate.getHours();
-  const endHour = endDate.getHours();
-  
-  // Mark each affected hour
-  for (let hour = startHour; hour < endHour; hour++) {
-    const slotId = generateSlotId(selectedRoom.id, hour);
-    newBookedSlots.set(slotId, true);
-    console.log(`Directly marked slot ${slotId} as booked`);
-  }
-  
-  // Update the state with new booked slots
-  setManuallyBookedSlots(newBookedSlots);
-  
-  // Force a rerender to update the UI immediately
-  setLocalDate(new Date(selectedDate));
+      const newBookedSlots = new Map(manuallyBookedSlots);
+      
+      // Get the time range from the reservation
+      const startHour = startDate.getHours();
+      const endHour = endDate.getHours();
+      
+      // Mark each affected hour
+      for (let hour = startHour; hour < endHour; hour++) {
+        const slotId = generateSlotId(selectedRoom.id, hour);
+        newBookedSlots.set(slotId, true);
+        console.log(`Directly marked slot ${slotId} as booked`);
+      }
+      
+      // Update the state with new booked slots
+      setManuallyBookedSlots(newBookedSlots);
+      
+      // Force a rerender to update the UI immediately
+      setLocalDate(new Date(selectedDate));
       
       // Close booking modal and show confirmation
       setIsModalOpen(false);
