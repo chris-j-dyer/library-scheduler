@@ -347,27 +347,43 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       const slotId = `${paddedRoomId}${paddedHour}${dateStr}`;
       occupiedSlots.push(slotId);
       
-      // Directly update DOM elements if we can find them
-      // This gives immediate visual feedback without waiting for a re-render
-      const timeSlotElements = document.querySelectorAll(`td div.calendar-cell`);
-      timeSlotElements.forEach(element => {
-        const cell = element as HTMLElement;
-        const parentCell = cell.closest('td');
+      // Update all cells VERY carefully by finding the exact row for this room
+      // and then finding the exact column for this hour
+      const rows = document.querySelectorAll('tr');
+      
+      // Loop through all rows to find the one for this room ID
+      rows.forEach(row => {
+        // First, check if this row belongs to the room we're booking
+        const roomCell = row.querySelector('td:first-child');
+        if (!roomCell || !roomCell.textContent) return;
         
-        // Check if this is a cell for the current room + hour
-        if (parentCell) {
-          const rowIndex = Array.from(parentCell.parentElement?.children || []).indexOf(parentCell);
-          if (rowIndex === hour - 8) { // Adjust for time slot offset (9am = index 1)
-            const row = parentCell.parentElement;
-            if (row) {
-              const roomCell = row.querySelector('td:first-child');
-              if (roomCell && roomCell.textContent?.includes(roomId.toString())) {
-                // This is the cell we want to update
-                cell.classList.remove('available');
-                cell.classList.add('occupied');
-                console.log(`Updated cell for room ${roomId}, hour ${hour} to occupied status`);
-              }
-            }
+        // Extract room ID from the room cell text
+        // The room ID should appear in the first cell's text content
+        // Look for text that includes "Room X" where X is the room ID
+        const roomTextMatch = roomCell.textContent.match(/Room\s+(\d+)/i);
+        if (!roomTextMatch) return;
+        
+        const roomIdFromText = parseInt(roomTextMatch[1], 10);
+        if (roomIdFromText !== roomId) return;
+        
+        console.log(`Found row for room ID ${roomId}`);
+        
+        // Now we've found the correct row for this room
+        // Find the cell for the specific hour (hour + 1 is the column index because the first column is the room name)
+        const hourColumnIndex = hour - 8; // Adjust for hour offset (9am = index 1)
+        const cells = Array.from(row.querySelectorAll('td'));
+        
+        // The first cell is the room name cell, so we skip it by adding 1 to hourColumnIndex
+        const targetCellIndex = hourColumnIndex + 1; 
+        
+        if (targetCellIndex >= 1 && targetCellIndex < cells.length) {
+          const cell = cells[targetCellIndex];
+          const cellDiv = cell.querySelector('div.calendar-cell');
+          
+          if (cellDiv) {
+            cellDiv.classList.remove('available');
+            cellDiv.classList.add('occupied');
+            console.log(`Updated cell for room ${roomId}, hour ${hour} to occupied status`);
           }
         }
       });
@@ -801,28 +817,42 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         if (currentDateStr === reservationDateStr) {
           console.log(`DOM update allowed: current date ${currentDateStr} matches reservation date ${reservationDateStr}`);
           
-          // Find all time slot cells and update the ones that belong to this reservation
-          const allCells = document.querySelectorAll('td div.calendar-cell');
-          allCells.forEach(el => {
-            const cell = el as HTMLElement;
-            const parentCell = cell.closest('td');
-            if (parentCell && cell.classList.contains('available')) {
-              const parentRow = parentCell.parentElement;
-              if (parentRow) {
-                // Get the room cell in this row
-                const roomCell = parentRow.querySelector('td:first-child');
-                if (roomCell && roomCell.textContent?.includes(selectedRoom.id.toString())) {
-                  // Get the hour index from the column position
-                  const cellIndex = Array.from(parentRow.children).indexOf(parentCell);
-                  const hour = cellIndex + 8; // Adjust based on time slot (9am = index 1)
-                  
-                  // Check if this hour is part of our reservation
-                  if (hour >= selectedTimeSlot && hour < selectedTimeSlot + selectedDuration) {
-                    // This is a cell we need to update
-                    cell.classList.remove('available');
-                    cell.classList.add('occupied');
-                    console.log(`Updated cell for room ${selectedRoom.id}, hour ${hour} to occupied status`);
-                  }
+          // Use the more precise approach to update exactly the right cells
+          const rows = document.querySelectorAll('tr');
+      
+          // Loop through all rows to find the one for this room ID
+          rows.forEach(row => {
+            // First, check if this row belongs to the room we're booking
+            const roomCell = row.querySelector('td:first-child');
+            if (!roomCell || !roomCell.textContent) return;
+            
+            // Extract room ID from the room cell text
+            const roomTextMatch = roomCell.textContent.match(/Room\s+(\d+)/i);
+            if (!roomTextMatch) return;
+            
+            const roomIdFromText = parseInt(roomTextMatch[1], 10);
+            if (roomIdFromText !== selectedRoom.id) return;
+            
+            console.log(`Found row for room ID ${selectedRoom.id}`);
+            
+            // Now update each reserved hour in the duration
+            for (let hour = selectedTimeSlot; hour < selectedTimeSlot + selectedDuration; hour++) {
+              // Calculate the correct column index (add 1 to skip room name column)
+              const hourColumnIndex = hour - 8; // 9am = index 1
+              const targetCellIndex = hourColumnIndex + 1;
+              
+              // Get all cells in this row
+              const cells = Array.from(row.querySelectorAll('td'));
+              
+              if (targetCellIndex >= 1 && targetCellIndex < cells.length) {
+                const cell = cells[targetCellIndex];
+                const cellDiv = cell.querySelector('div.calendar-cell');
+                
+                if (cellDiv) {
+                  console.log(`Updating cell at index ${targetCellIndex} for hour ${hour}`);
+                  cellDiv.classList.remove('available');
+                  cellDiv.classList.add('occupied');
+                  console.log(`Updated cell for room ${selectedRoom.id}, hour ${hour} to occupied status`);
                 }
               }
             }
