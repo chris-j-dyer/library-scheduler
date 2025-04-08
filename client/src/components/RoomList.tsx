@@ -310,14 +310,28 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     });
   }
   
-  // Create a state variable for reservations that we can directly update
+  // STEP 1 & 2: Create a state variable for reservations and ensure it's initialized as an empty array
   const [reservations, setReservations] = useState<Reservation[]>([]);
+  
+  // STEP 6: Add a useEffect to watch reservations changes
+  useEffect(() => {
+    console.log("Reservations state changed:", reservations);
+    console.log("Current reservations:", reservations);
+    console.log("Is reservations an array?", Array.isArray(reservations));
+    console.log("Reservations length:", reservations?.length);
+  }, [reservations]);
+  
+  // STEP 5: Add forceUpdate state to force re-render after state changes
+  const [forceUpdate, setForceUpdate] = useState(0);
   
   // Update reservations state when the query data changes
   useEffect(() => {
     if (reservationsQuery.data) {
       console.log("Setting reservations from query data:", reservationsQuery.data.length);
+      console.log("Before updating from query, state:", reservations);
       setReservations(reservationsQuery.data);
+      // Force re-render with a dummy state update
+      setForceUpdate(prev => prev + 1);
     }
   }, [reservationsQuery.data]);
   
@@ -621,9 +635,41 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     };
   }, [reservations, selectedDate, roomsData]);
   
-  // Simplified availability check function
+  // STEP 4: Debug the isReserved check with verbose logging
   const isTimeSlotAvailable = (roomId: number, hour: number) => {
-    return buildAvailabilityMap.isSlotAvailable(roomId, hour);
+    console.log(`Checking if slot room=${roomId}, hour=${hour} is available`);
+
+    // Generate slot ID for debugging
+    const dateStr = format(selectedDate, 'yyyyMMdd');
+    const paddedRoomId = roomId.toString().padStart(2, '0');
+    const paddedHour = hour.toString().padStart(2, '0');
+    const slotId = `${paddedRoomId}${paddedHour}${dateStr}`;
+    
+    console.log(`Generated slot ID: ${slotId}`);
+    console.log("Current reservations:", reservations.length);
+    
+    // Check each reservation for matches
+    reservations.forEach(r => {
+      if (r.roomId === roomId) {
+        const startTime = typeof r.startTime === 'string' ? new Date(r.startTime) : r.startTime;
+        const endTime = typeof r.endTime === 'string' ? new Date(r.endTime) : r.endTime;
+        const startHour = startTime.getHours();
+        const endHour = endTime.getHours();
+        
+        const resDate = r.date || new Date(r.reservationDate);
+        const isSameDateAsSelected = isSameDay(resDate, selectedDate);
+        const isHourInRange = hour >= startHour && hour < endHour;
+        const isCancelled = r.status === 'cancelled';
+        
+        console.log(`Reservation #${r.id}: roomId=${r.roomId}, hours=${startHour}-${endHour}, date match=${isSameDateAsSelected}, in range=${isHourInRange}, cancelled=${isCancelled}`);
+      }
+    });
+    
+    // Get the result from the actual availability map
+    const isAvailable = buildAvailabilityMap.isSlotAvailable(roomId, hour);
+    console.log(`Final availability for slot room=${roomId}, hour=${hour}: ${isAvailable ? 'AVAILABLE' : 'RESERVED'}`);
+    
+    return isAvailable;
   };
   
   // Generate schedule for each room
@@ -778,8 +824,16 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         endTime: format(clientReservation.endTime, 'HH:mm:ss')
       });
       
+      // STEP 3: Trace a reservation through the system
+      console.log("Before reservation, state:", reservations);
+      console.log("Adding reservation:", {
+        roomId: selectedRoom.id, 
+        startHour: selectedTimeSlot,
+        endHour: selectedTimeSlot + selectedDuration,
+        date: format(selectedDate, 'yyyy-MM-dd')
+      });
+      
       // Update the query cache with the new reservation data
-      // This is more reliable than manually updating the local state
       queryClient.setQueryData(
         ['/api/reservations/by-date', formattedDate],
         (oldData: any[] | undefined) => {
@@ -792,7 +846,9 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       // This ensures the component re-renders with the new reservation included
       setReservations(prevReservations => {
         console.log('Adding new reservation to local state:', newReservation);
-        return [...prevReservations, newReservation];
+        const newState = [...prevReservations, newReservation];
+        console.log("New reservations state:", newState);
+        return newState;
       });
       
       // Also invalidate the query to ensure it will be refetched next time
@@ -800,6 +856,9 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       queryClient.invalidateQueries({ 
         queryKey: ['/api/reservations/by-date', formattedDate] 
       });
+      
+      // STEP 5: Force a re-render after state change
+      setForceUpdate(prev => prev + 1);
       
       // Mark this reservation's slots
       markReservationSlots(newReservation, true);

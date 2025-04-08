@@ -1,0 +1,56 @@
+Debug and fix the reservation bubble color change with these precise steps:
+
+STEP 1: Add debug logging to understand the current state
+- In the main calendar file, add these console.logs:
+  console.log("Current reservations:", reservations);
+  console.log("Is reservations an array?", Array.isArray(reservations));
+  console.log("Reservations length:", reservations?.length);
+
+STEP 2: Fix the initial state
+- Make sure reservations is initialized properly:
+  const [reservations, setReservations] = useState([]);  // Empty array, not null or undefined
+
+STEP 3: Trace a reservation through the system
+- In the handleReservation function, log before and after the state update:
+  console.log("Before reservation, state:", reservations);
+  // After successful API call:
+  console.log("Adding reservation:", {roomId, timeSlotId});
+  setReservations(prev => {
+    const newState = [...prev, {roomId, timeSlotId, userId: currentUser?.id}];
+    console.log("New reservations state:", newState);
+    return newState;
+  });
+
+STEP 4: Debug the isReserved check
+- Add verbose logging for slot rendering:
+  const slotReserved = (roomId, timeSlotId) => {
+    console.log(`Checking if slot ${roomId}-${timeSlotId} is reserved`);
+    console.log("Current reservations:", reservations);
+    
+    // Try different comparison methods
+    const isReserved = reservations.some(r => {
+      const match = r.roomId == roomId && r.timeSlotId == timeSlotId;
+      console.log(`Comparing ${r.roomId}==${roomId} && ${r.timeSlotId}==${timeSlotId} => ${match}`);
+      return match;
+    });
+    
+    console.log(`Slot ${roomId}-${timeSlotId} reserved:`, isReserved);
+    return isReserved;
+  };
+
+  // Then in your render:
+  const reserved = slotReserved(room.id, timeSlot.id);
+
+STEP 5: Force a re-render after state change
+- After updating reservations state in the handler, force component update:
+  setReservations(prev => [...prev, newReservation]);
+  // Force re-render with a dummy state update
+  setForceUpdate(prev => prev + 1);
+
+STEP 6: Add a useEffect to watch reservations changes
+- Add this to see when reservations change:
+  useEffect(() => {
+    console.log("Reservations state changed:", reservations);
+  }, [reservations]);
+
+Run the app with these changes and check the console logs to pinpoint exactly why the reservation status isn't being detected.
