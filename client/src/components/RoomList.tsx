@@ -204,14 +204,18 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   
   // Update user info when user changes (logs in/out)
   useEffect(() => {
+    console.log("User changed:", user ? user.username : "not logged in");
     if (user) {
       setUserName(user.name || user.username);
       setUserEmail(user.email || "");
+      
+      // Ensure localDate is updated when user logs in to prevent white screen issues
+      setLocalDate(new Date(selectedDate));
     } else {
       setUserName("");
       setUserEmail("");
     }
-  }, [user]);
+  }, [user, selectedDate]);
   
   // Transform raw API data into client-side reservation objects
   const transformReservations = useCallback((data: any[]): Reservation[] => {
@@ -629,41 +633,45 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   };
   
   const handleBookingSubmit = async () => {
-    if (!selectedRoom || selectedTimeSlot === null) return;
-    
-    if (!userName || !userEmail) {
-      toast({
-        title: "Missing information",
-        description: "Please provide your name and email",
-        variant: "destructive"
-      });
-      return;
-    }
-    
-    // Prepare reservation data for API with exact hours
-    // Create dates with minutes and seconds set to zero
-    const startDate = new Date(selectedDate);
-    startDate.setHours(selectedTimeSlot, 0, 0, 0);
-    
-    const endDate = new Date(selectedDate);
-    endDate.setHours(selectedTimeSlot + selectedDuration, 0, 0, 0);
-    
-    const reservationData = {
-      roomId: selectedRoom.id,
-      // Format dates as strings for API compatibility
-      reservationDate: format(selectedDate, 'yyyy-MM-dd'),
-      startTime: format(startDate, 'yyyy-MM-dd HH:mm:ss'),
-      endTime: format(endDate, 'yyyy-MM-dd HH:mm:ss'),
-      purpose: purpose || "Study session",
-      // If user is logged in, these fields will be associated with the user account
-      // Otherwise, use the guest fields
-      guestName: userName,
-      guestEmail: userEmail,
-      status: "confirmed",
-      confirmationCode: `LIB-${Math.floor(100000 + Math.random() * 900000)}`
-    };
-    
     try {
+      // Basic validation
+      if (!selectedRoom || selectedTimeSlot === null) {
+        console.error("Cannot submit booking: selected room or time slot is missing");
+        return;
+      }
+      
+      if (!userName || !userEmail) {
+        toast({
+          title: "Missing information",
+          description: "Please provide your name and email",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Prepare reservation data for API with exact hours
+      // Create dates with minutes and seconds set to zero
+      const startDate = new Date(selectedDate);
+      startDate.setHours(selectedTimeSlot, 0, 0, 0);
+      
+      const endDate = new Date(selectedDate);
+      endDate.setHours(selectedTimeSlot + selectedDuration, 0, 0, 0);
+      
+      const reservationData = {
+        roomId: selectedRoom.id,
+        // Format dates as strings for API compatibility
+        reservationDate: format(selectedDate, 'yyyy-MM-dd'),
+        startTime: format(startDate, 'yyyy-MM-dd HH:mm:ss'),
+        endTime: format(endDate, 'yyyy-MM-dd HH:mm:ss'),
+        purpose: purpose || "Study session",
+        // If user is logged in, these fields will be associated with the user account
+        // Otherwise, use the guest fields
+        guestName: userName,
+        guestEmail: userEmail,
+        status: "confirmed",
+        confirmationCode: `LIB-${Math.floor(100000 + Math.random() * 900000)}`
+      };
+      
       // Call the API to create reservation
       const response = await fetch('/api/reservations', {
         method: 'POST',
