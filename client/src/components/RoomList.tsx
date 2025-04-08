@@ -343,24 +343,35 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     return false;
   }, [selectedDate]);
   
-  // Setup WebSocket connection
+  // Setup WebSocket connection with proper dependencies and cleanup
   useEffect(() => {
+    console.log("Setting up WebSocket connection with localDate:", format(localDate, 'yyyy-MM-dd'));
+    
     // Create WebSocket connection
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const wsUrl = `${protocol}//${window.location.host}/ws`;
+    
+    // Close any existing connection before creating a new one
+    if (websocketRef.current && websocketRef.current.readyState === WebSocket.OPEN) {
+      console.log('Closing existing WebSocket connection before creating a new one');
+      websocketRef.current.close();
+    }
+    
     const socket = new WebSocket(wsUrl);
     websocketRef.current = socket;
     
-    // Connection opened
-    socket.addEventListener('open', (event) => {
+    // Define all event handlers as named functions so they can be properly removed
+    const handleOpen = () => {
       console.log('WebSocket connection established');
-    });
+    };
     
-    // Listen for messages
-    socket.addEventListener('message', (event) => {
+    const handleMessage = (event: MessageEvent) => {
       try {
         const message = JSON.parse(event.data);
         console.log('WebSocket message received:', message);
+        
+        // Use the current localDate value for all operations to ensure consistency
+        const formattedDate = format(localDate, 'yyyy-MM-dd');
         
         // Handle different message types
         if (message.type === 'new_reservation') {
@@ -369,12 +380,12 @@ export default function RoomList({ selectedDate }: RoomListProps) {
           const reservationDate = new Date(reservation.reservationDate);
           
           // If this reservation is for the selected date, update our data
-          if (isSameDay(reservationDate, selectedDate)) {
+          if (isSameDay(reservationDate, localDate)) {
             console.log('WebSocket received new reservation for selected date:', reservation);
             
             // First update the query cache with the new reservation
             queryClient.setQueryData(
-              ['/api/reservations/by-date', format(selectedDate, 'yyyy-MM-dd')],
+              ['/api/reservations/by-date', formattedDate],
               (oldData: any[] | undefined) => {
                 if (!oldData) return [reservation];
                 
@@ -390,7 +401,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
             
             // Then immediately invalidate to force a refetch
             queryClient.invalidateQueries({ 
-              queryKey: ['/api/reservations/by-date', format(selectedDate, 'yyyy-MM-dd')] 
+              queryKey: ['/api/reservations/by-date', formattedDate] 
             });
             
             // Mark this reservation's slots
@@ -404,10 +415,8 @@ export default function RoomList({ selectedDate }: RoomListProps) {
             
             // Force a refresh if slots were changed
             if (slotsChanged) {
-              setTimeout(() => {
-                // Force component to re-render
-                setLocalDate(new Date(selectedDate));
-              }, 500);
+              // Force component to re-render immediately
+              setLocalDate(new Date(localDate));
             }
           }
         } else if (message.type === 'cancelled_reservation') {
@@ -415,17 +424,14 @@ export default function RoomList({ selectedDate }: RoomListProps) {
           const reservation = message.data;
           const reservationDate = new Date(reservation.reservationDate);
           
-          if (isSameDay(reservationDate, selectedDate)) {
+          if (isSameDay(reservationDate, localDate)) {
             // Invalidate the query for the selected date
             queryClient.invalidateQueries({ 
-              queryKey: ['/api/reservations/by-date', format(selectedDate, 'yyyy-MM-dd')] 
+              queryKey: ['/api/reservations/by-date', formattedDate] 
             });
             
-            // Force a refresh
-            setTimeout(() => {
-              // Force component to re-render
-              setLocalDate(new Date(selectedDate));
-            }, 500);
+            // Force a refresh immediately
+            setLocalDate(new Date(localDate));
             
             toast({
               title: "Reservation Cancelled",
@@ -436,25 +442,38 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       } catch (error) {
         console.error('Error parsing WebSocket message:', error);
       }
-    });
+    };
     
-    // Connection closed
-    socket.addEventListener('close', (event) => {
+    const handleClose = () => {
       console.log('WebSocket connection closed');
-    });
+    };
     
-    // Connection error
-    socket.addEventListener('error', (event) => {
+    const handleError = (event: Event) => {
       console.error('WebSocket error:', event);
-    });
+    };
     
-    // Cleanup on unmount
+    // Add event listeners
+    socket.addEventListener('open', handleOpen);
+    socket.addEventListener('message', handleMessage);
+    socket.addEventListener('close', handleClose);
+    socket.addEventListener('error', handleError);
+    
+    // Cleanup on unmount or when dependencies change
     return () => {
-      if (socket && socket.readyState === WebSocket.OPEN) {
+      console.log('Cleaning up WebSocket connection');
+      // Remove all event listeners to prevent memory leaks
+      socket.removeEventListener('open', handleOpen);
+      socket.removeEventListener('message', handleMessage);
+      socket.removeEventListener('close', handleClose);
+      socket.removeEventListener('error', handleError);
+      
+      // Close the connection
+      if (socket.readyState === WebSocket.OPEN) {
+        console.log('Closing WebSocket connection during cleanup');
         socket.close();
       }
     };
-  }, [selectedDate, queryClient, toast, markReservationSlots]);
+  }, [localDate, queryClient, toast, markReservationSlots]);
   
   // Create a direct room+timeslot mapping for each reservation
   const buildAvailabilityMap = useMemo(() => {
@@ -531,12 +550,15 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   const [manuallyBookedSlots, setManuallyBookedSlots] = useState<Map<string, boolean>>(new Map());
   
   // Generate a unique ID for each room+hour+date combo
-  const generateSlotId = (roomId: number, hour: number) => {
-    const dateStr = format(selectedDate, 'yyyyMMdd');
+  // Create a memoized version of generateSlotId that doesn't depend on selectedDate closure
+  const generateSlotId = useCallback((roomId: number, hour: number) => {
+    // Use localDate to ensure date is consistent with the component's current state
+    const dateStr = format(localDate, 'yyyyMMdd'); 
     const paddedRoomId = roomId.toString().padStart(2, '0');
     const paddedHour = hour.toString().padStart(2, '0');
+    console.log(`Generated slot ID for room ${roomId}, hour ${hour}, date ${dateStr}: ${paddedRoomId}${paddedHour}${dateStr}`);
     return `${paddedRoomId}${paddedHour}${dateStr}`;
-  };
+  }, [localDate]); // Depend only on localDate
   
   // Simplified availability check function that considers both our map and manual overrides
   const isTimeSlotAvailable = (roomId: number, hour: number) => {
