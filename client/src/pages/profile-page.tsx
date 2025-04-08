@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { format, addHours } from "date-fns";
-import { Calendar, Clock, MapPin, Users } from "lucide-react";
+import { AlertTriangle, Calendar, Clock, MapPin, Users } from "lucide-react";
 import { useState } from "react";
 import { Reservation, Room, Location } from "@shared/schema";
 
@@ -12,6 +12,16 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { 
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog";
 
 export default function ProfilePage() {
   const { user } = useAuth();
@@ -63,10 +73,22 @@ export default function ProfilePage() {
     .sort((a: Reservation, b: Reservation) => 
       new Date(b.startTime).getTime() - new Date(a.startTime).getTime());
 
-  // Handle reservation cancellation
-  const handleCancelReservation = async (id: number) => {
+  // State for the cancel confirmation dialog
+  const [cancelDialogOpen, setCancelDialogOpen] = useState(false);
+  const [reservationToCancel, setReservationToCancel] = useState<number | null>(null);
+
+  // Handle opening the cancel confirmation dialog
+  const openCancelDialog = (id: number) => {
+    setReservationToCancel(id);
+    setCancelDialogOpen(true);
+  };
+
+  // Handle actual reservation cancellation
+  const handleCancelReservation = async () => {
+    if (!reservationToCancel) return;
+    
     try {
-      const response = await fetch(`/api/reservations/${id}/cancel`, {
+      const response = await fetch(`/api/reservations/${reservationToCancel}/cancel`, {
         method: "POST",
         credentials: "include",
       });
@@ -82,6 +104,10 @@ export default function ProfilePage() {
       
       // Refetch reservations
       refetchReservations();
+      
+      // Close the dialog
+      setCancelDialogOpen(false);
+      setReservationToCancel(null);
     } catch (error) {
       toast({
         title: "Failed to cancel",
@@ -93,6 +119,30 @@ export default function ProfilePage() {
 
   return (
     <div className="container mx-auto p-4 max-w-6xl">
+      {/* Cancellation Confirmation Dialog */}
+      <AlertDialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-destructive" />
+              Cancel Reservation
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to cancel this reservation? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>No, Keep It</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => handleCancelReservation()} 
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Yes, Cancel Reservation
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+      
       <div className="flex flex-col space-y-6">
         <div className="flex items-center justify-between">
           <div>
@@ -180,7 +230,7 @@ export default function ProfilePage() {
                       <ReservationCard
                         key={reservation.id}
                         reservation={reservation}
-                        onCancel={() => handleCancelReservation(reservation.id)}
+                        onCancel={() => openCancelDialog(reservation.id)}
                         canCancel={true}
                       />
                     ))}
