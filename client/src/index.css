@@ -43,6 +43,18 @@
   cursor: not-allowed;
 }
 
+.weekend-closed {
+  background-color: #f7d9d9; /* Light red/pink background */
+  cursor: not-allowed;
+  background-image: repeating-linear-gradient(
+    45deg,
+    transparent,
+    transparent 5px,
+    rgba(220, 38, 38, 0.1) 5px,
+    rgba(220, 38, 38, 0.1) 10px
+  ); /* Diagonal pattern */
+}
+
 .room-card {
   border-radius: 8px;
   transition: all 0.2s ease;

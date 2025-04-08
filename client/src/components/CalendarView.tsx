@@ -183,17 +183,30 @@ export default function CalendarView() {
       </div>
 
       {/* Calendar Grid */}
+      {/* Library Hours Notice */}
+      {[0, 6].includes(selectedDate.getDay()) && (
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-md text-sm text-blue-800">
+          <p className="font-medium">Weekend Hours Notice</p>
+          <p>The library closes at 5:00 PM on weekends. Rooms cannot be booked after closing time.</p>
+        </div>
+      )}
+      
       <div className="overflow-x-auto">
         <table className="w-full border-collapse border border-gray-200 rounded-lg overflow-hidden">
           <thead>
             <tr>
               <th className="border border-gray-200 p-3 text-left w-72 bg-gray-50">Space</th>
-              <th className="border border-gray-200 p-3 text-center bg-gray-50" colSpan={11}>
+              <th className="border border-gray-200 p-3 text-center bg-gray-50" colSpan={12}>
                 {format(selectedDate, "EEEE, MMMM d, yyyy")}
               </th>
             </tr>
             <tr>
               <th className="border border-gray-200 bg-gray-50 p-2"></th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">9:00am</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">10:00am</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">11:00am</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">12:00pm</th>
+              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">1:00pm</th>
               <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">2:00pm</th>
               <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">3:00pm</th>
               <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">4:00pm</th>
@@ -201,10 +214,6 @@ export default function CalendarView() {
               <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">6:00pm</th>
               <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">7:00pm</th>
               <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">8:00pm</th>
-              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">9:00pm</th>
-              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">10:00pm</th>
-              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">11:00pm</th>
-              <th className="border border-gray-200 bg-gray-50 p-2 text-sm text-center w-20 time-header">12:00am</th>
             </tr>
           </thead>
           <tbody>

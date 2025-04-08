@@ -278,14 +278,19 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   
   // Generate schedule for each room
   const getRoomSchedule = (roomId: number) => {
-    // Create array of time slots from 2pm to 12am
+    // Create array of time slots from 9am to 8pm
     const timeSlots: TimeSlot[] = [];
     
-    // Start at 2pm (14:00) and go until 11pm (23:00)
-    for (let hour = 14; hour <= 24; hour++) {
+    // Start at 9am (9:00) and go until 8pm (20:00)
+    for (let hour = 9; hour <= 20; hour++) {
+      // Check if it's a weekend and time is after 5pm - library closes earlier on weekends
+      const isWeekend = [0, 6].includes(selectedDate.getDay()); // 0 = Sunday, 6 = Saturday
+      const isAfterWeekendHours = isWeekend && hour >= 17; // 5pm and later on weekends
+      
       // Use the more robust isTimeSlotBookable function to check availability
       // This function properly normalizes dates and handles date comparison more reliably
-      const isAvailable = isTimeSlotBookable(roomId, hour);
+      // If it's a weekend after hours, mark as unavailable regardless of bookings
+      const isAvailable = isAfterWeekendHours ? false : isTimeSlotBookable(roomId, hour);
       
       timeSlots.push({
         hour,
@@ -293,7 +298,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       });
       
       // Log the schedule for debugging
-      console.log(`Room ${roomId}, Hour ${hour}: ${isAvailable ? 'Available' : 'Occupied'}`);
+      console.log(`Room ${roomId}, Hour ${hour}: ${isAvailable ? 'Available' : isAfterWeekendHours ? 'Weekend after hours' : 'Occupied'}`);
     }
     
     return timeSlots;
@@ -460,7 +465,13 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     // Get the next 'consecutive' hours and check if they're all available
     for (let i = 0; i < consecutive; i++) {
       const currentHour = hour + i;
-      if (currentHour > 24) return false; // Past midnight
+      
+      // Check if hour is outside library hours (9am-8pm, or 9am-5pm on weekends)
+      if (currentHour < 9 || currentHour > 20) return false; // Outside library hours
+      
+      // Check for weekend closing time restrictions
+      const isWeekend = [0, 6].includes(selectedDate.getDay()); // 0 = Sunday, 6 = Saturday
+      if (isWeekend && currentHour >= 17) return false; // Weekend after 5pm
       
       console.log(`Checking if hour ${currentHour} is bookable for room ${roomId}`);
       
@@ -545,18 +556,38 @@ export default function RoomList({ selectedDate }: RoomListProps) {
               </div>
             </td>
             
-            {schedule.map((slot, index) => (
-              <td 
-                key={index} 
-                className="p-0 border border-gray-200"
-                onClick={() => handleTimeSlotClick(room.id, slot.hour, slot.isAvailable)}
-              >
-                <div 
-                  className={`${slot.isAvailable ? 'available' : 'occupied'} calendar-cell`}
-                  title={`${slot.isAvailable ? 'Available' : 'Occupied'} at ${formatTimeSlot(slot.hour)}`}
-                ></div>
-              </td>
-            ))}
+            {schedule.map((slot, index) => {
+              // Check if it's a weekend slot after 5pm to show special styling
+              const isWeekend = [0, 6].includes(selectedDate.getDay()); // 0 = Sunday, 6 = Saturday
+              const isWeekendAfterHours = isWeekend && slot.hour >= 17; // 5pm and later on weekends
+              const cellTitle = slot.isAvailable
+                ? `Available at ${formatTimeSlot(slot.hour)}`
+                : isWeekendAfterHours
+                  ? `Library closes at 5:00 PM on weekends`
+                  : `Occupied at ${formatTimeSlot(slot.hour)}`;
+              
+              let cellClass = 'calendar-cell';
+              if (slot.isAvailable) {
+                cellClass += ' available';
+              } else if (isWeekendAfterHours) {
+                cellClass += ' weekend-closed';
+              } else {
+                cellClass += ' occupied';
+              }
+              
+              return (
+                <td 
+                  key={index} 
+                  className="p-0 border border-gray-200"
+                  onClick={() => handleTimeSlotClick(room.id, slot.hour, slot.isAvailable)}
+                >
+                  <div 
+                    className={cellClass}
+                    title={cellTitle}
+                  ></div>
+                </td>
+              );
+            })}
           </tr>
         );
       })}
