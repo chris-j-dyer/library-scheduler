@@ -17,11 +17,17 @@ export default function CalendarView() {
   const weekEndDate = addDays(selectedDate, 6);
   
   const handlePrevious = () => {
-    setSelectedDate(prev => subDays(prev, showingWeek ? 7 : 1));
+    // The text in the button is reversed from the state:
+    // When showingWeek=true, button says "Day", and we should move by 1 day
+    // When showingWeek=false, button says "Week", and we should move by 7 days
+    setSelectedDate(prev => subDays(prev, !showingWeek ? 7 : 1));
   };
   
   const handleNext = () => {
-    setSelectedDate(prev => addDays(prev, showingWeek ? 7 : 1));
+    // The text in the button is reversed from the state:
+    // When showingWeek=true, button says "Day", and we should move by 1 day  
+    // When showingWeek=false, button says "Week", and we should move by 7 days
+    setSelectedDate(prev => addDays(prev, !showingWeek ? 7 : 1));
   };
   
   const handleDateSelect = (date: Date | undefined) => {
@@ -111,7 +117,9 @@ export default function CalendarView() {
               className="border-t border-b border-gray-200 px-3 py-2 h-10 hover:bg-gray-100 transition-colors"
               onClick={toggleView}
             >
-              {showingWeek ? "Day" : "Week"}
+              {/* When showingWeek is true, display "Day" to let user switch to day mode */}
+              {/* When showingWeek is false, display "Week" to let user switch to week mode */}
+              {showingWeek ? "Day" : "Week"} View
             </Button>
             <Button 
               variant="outline" 
