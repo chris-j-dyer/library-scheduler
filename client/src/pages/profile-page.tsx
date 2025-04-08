@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { format, addHours } from "date-fns";
 import { AlertTriangle, Calendar, Clock, MapPin, Users } from "lucide-react";
@@ -26,17 +26,60 @@ import {
 export default function ProfilePage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState("upcoming");
 
   // Query for user's reservations
   const { 
     data: reservations = [] as Reservation[], 
     isLoading: isLoadingReservations,
-    error: reservationsError,
-    refetch: refetchReservations
+    error: reservationsError
   } = useQuery<Reservation[]>({
     queryKey: ["/api/user/reservations"],
     enabled: !!user,
+  });
+
+  // Cancel reservation mutation
+  const cancelReservationMutation = useMutation({
+    mutationFn: async (reservationId: number) => {
+      const response = await fetch(`/api/reservations/${reservationId}/cancel`, {
+        method: "POST",
+        credentials: "include",
+      });
+      
+      if (!response.ok) {
+        throw new Error("Failed to cancel reservation");
+      }
+      
+      return response.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Reservation cancelled",
+        description: "Your reservation has been successfully cancelled.",
+      });
+      
+      // Invalidate and refetch reservations
+      queryClient.invalidateQueries({ queryKey: ["/api/user/reservations"] });
+      
+      // Also invalidate any date-specific queries that might be affected
+      const currentDate = new Date();
+      const dateString = format(currentDate, 'yyyy-MM-dd');
+      queryClient.invalidateQueries({ 
+        queryKey: ['/api/reservations/by-date', dateString]
+      });
+      
+      // Close the dialog
+      setCancelDialogOpen(false);
+      setReservationToCancel(null);
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to cancel",
+        description: error instanceof Error ? error.message : "An unknown error occurred",
+        variant: "destructive",
+      });
+    }
   });
 
   // Handle errors
@@ -84,37 +127,9 @@ export default function ProfilePage() {
   };
 
   // Handle actual reservation cancellation
-  const handleCancelReservation = async () => {
+  const handleCancelReservation = () => {
     if (!reservationToCancel) return;
-    
-    try {
-      const response = await fetch(`/api/reservations/${reservationToCancel}/cancel`, {
-        method: "POST",
-        credentials: "include",
-      });
-      
-      if (!response.ok) {
-        throw new Error("Failed to cancel reservation");
-      }
-      
-      toast({
-        title: "Reservation cancelled",
-        description: "Your reservation has been successfully cancelled.",
-      });
-      
-      // Refetch reservations
-      refetchReservations();
-      
-      // Close the dialog
-      setCancelDialogOpen(false);
-      setReservationToCancel(null);
-    } catch (error) {
-      toast({
-        title: "Failed to cancel",
-        description: error instanceof Error ? error.message : "An unknown error occurred",
-        variant: "destructive",
-      });
-    }
+    cancelReservationMutation.mutate(reservationToCancel);
   };
 
   return (
@@ -136,8 +151,9 @@ export default function ProfilePage() {
             <AlertDialogAction 
               onClick={() => handleCancelReservation()} 
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              disabled={cancelReservationMutation.isPending}
             >
-              Yes, Cancel Reservation
+              {cancelReservationMutation.isPending ? "Cancelling..." : "Yes, Cancel Reservation"}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
