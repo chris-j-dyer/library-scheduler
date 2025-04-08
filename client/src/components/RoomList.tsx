@@ -310,8 +310,16 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     });
   }
   
-  // Extract reservations from query result
-  const reservations = reservationsQuery.data || [];
+  // Create a state variable for reservations that we can directly update
+  const [reservations, setReservations] = useState<Reservation[]>([]);
+  
+  // Update reservations state when the query data changes
+  useEffect(() => {
+    if (reservationsQuery.data) {
+      console.log("Setting reservations from query data:", reservationsQuery.data.length);
+      setReservations(reservationsQuery.data);
+    }
+  }, [reservationsQuery.data]);
   
   // Function to mark a reservation in the availability map
   const markReservationSlots = useCallback((reservation: any, force = false) => {
@@ -418,6 +426,18 @@ export default function RoomList({ selectedDate }: RoomListProps) {
                 return oldData;
               }
             );
+            
+            // CRITICAL: Update our local state directly to trigger UI updates
+            // This ensures the component re-renders with the new reservation included
+            setReservations(prevReservations => {
+              // Check if this reservation is already in our state
+              const exists = prevReservations.some(r => r.id === reservation.id);
+              if (!exists) {
+                console.log('WebSocket: Adding new reservation to local state:', reservation);
+                return [...prevReservations, reservation];
+              }
+              return prevReservations;
+            });
             
             // Then immediately invalidate to force a refetch
             queryClient.invalidateQueries({ 
@@ -751,6 +771,13 @@ export default function RoomList({ selectedDate }: RoomListProps) {
           return [...oldData, newReservation];
         }
       );
+      
+      // CRITICAL: Update our local state directly to trigger UI updates
+      // This ensures the component re-renders with the new reservation included
+      setReservations(prevReservations => {
+        console.log('Adding new reservation to local state:', newReservation);
+        return [...prevReservations, newReservation];
+      });
       
       // Also invalidate the query to ensure it will be refetched next time
       // This ensures data consistency in case the server's response is different
