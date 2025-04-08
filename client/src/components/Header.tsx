@@ -11,50 +11,20 @@ import {
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
-import { useState, useEffect } from "react";
 
 export default function Header() {
-  const [error, setError] = useState<Error | null>(null);
   const { user, logoutMutation } = useAuth();
   const { toast } = useToast();
   
-  // Debug logging for Header component
-  useEffect(() => {
-    console.log("Header component mounted");
-    console.log("User in Header:", user);
-  }, [user]);
-  
-  // If something goes wrong, show a simpler header
-  if (error) {
-    return (
-      <header className="bg-white shadow-sm py-4 px-6 mb-6">
-        <div className="max-w-screen-xl mx-auto">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center space-x-3">
-              <BookOpen className="h-7 w-7 text-blue-600" />
-              <h1 className="text-xl font-semibold text-blue-600">Charlotte Mecklenburg Library</h1>
-            </div>
-            <p className="text-red-500">Error loading user data</p>
-          </div>
-        </div>
-      </header>
-    );
-  }
-  
   const handleLogout = () => {
-    try {
-      logoutMutation.mutate(undefined, {
-        onSuccess: () => {
-          toast({
-            title: "Logged out",
-            description: "You have been successfully logged out."
-          });
-        }
-      });
-    } catch (e) {
-      console.error("Error in logout:", e);
-      setError(e instanceof Error ? e : new Error('Failed to logout'));
-    }
+    logoutMutation.mutate(undefined, {
+      onSuccess: () => {
+        toast({
+          title: "Logged out",
+          description: "You have been successfully logged out."
+        });
+      }
+    });
   };
   return (
     <header className="bg-white shadow-sm py-4 px-6 mb-6">
@@ -98,7 +68,7 @@ export default function Header() {
                   <Link href="/profile">
                     <DropdownMenuItem className="cursor-pointer">My Reservations</DropdownMenuItem>
                   </Link>
-                  {user && user.isAdmin === true && (
+                  {user.isAdmin && (
                     <DropdownMenuItem className="cursor-pointer">Admin Dashboard</DropdownMenuItem>
                   )}
                   <DropdownMenuSeparator />

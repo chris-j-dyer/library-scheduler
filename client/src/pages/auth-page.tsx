@@ -47,28 +47,13 @@ type RegisterFormValues = z.infer<typeof registerFormSchema>;
 export default function AuthPage() {
   const [activeTab, setActiveTab] = useState<string>("login");
   const [location, navigate] = useLocation();
-  const { user, isLoading, loginMutation, registerMutation } = useAuth();
+  const { user, loginMutation, registerMutation } = useAuth();
 
-  // Debug logging
-  console.log("AuthPage rendering, auth state:", { 
-    isLoggedIn: !!user, 
-    isLoading, 
-    currentLocation: location,
-    userData: user,
-    loginPending: loginMutation.isPending,
-    registerPending: registerMutation.isPending
-  });
-
-  // Use effect for navigation to avoid navigation during render
-  useEffect(() => {
-    // Only redirect when we know for sure the user is logged in and auth status is not loading
-    if (user && !isLoading && !loginMutation.isPending && !registerMutation.isPending) {
-      console.log("User is authenticated, redirecting to home");
-      // Small timeout to ensure all state updates are complete
-      const timer = setTimeout(() => navigate("/"), 100);
-      return () => clearTimeout(timer);
-    }
-  }, [user, isLoading, navigate, loginMutation.isPending, registerMutation.isPending]);
+  // Redirect if already logged in
+  if (user) {
+    navigate("/");
+    return null;
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-background to-secondary/10">
@@ -141,7 +126,6 @@ export default function AuthPage() {
 
 function LoginForm({ onSuccess, isLoading }: { onSuccess: () => void, isLoading: boolean }) {
   const { loginMutation } = useAuth();
-  const [loginError, setLoginError] = useState<string | null>(null);
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginFormSchema),
@@ -152,18 +136,8 @@ function LoginForm({ onSuccess, isLoading }: { onSuccess: () => void, isLoading:
   });
 
   const onSubmit = (values: LoginFormValues) => {
-    setLoginError(null);
-    console.log("Login form submission:", { username: values.username });
-    
     loginMutation.mutate(values, {
-      onSuccess: (user) => {
-        console.log("Login successful, user data:", user);
-        onSuccess();
-      },
-      onError: (error) => {
-        console.error("Login error in form handler:", error);
-        setLoginError(error.message || "Login failed. Please check your credentials.");
-      }
+      onSuccess,
     });
   };
 
@@ -204,14 +178,6 @@ function LoginForm({ onSuccess, isLoading }: { onSuccess: () => void, isLoading:
                 </FormItem>
               )}
             />
-            
-            {/* Login error display */}
-            {loginError && (
-              <div className="p-3 rounded-md bg-red-50 border border-red-200 text-red-800 text-sm">
-                {loginError}
-              </div>
-            )}
-            
             <Button type="submit" className="w-full" disabled={isLoading}>
               {isLoading ? (
                 <>
