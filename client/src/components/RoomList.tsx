@@ -338,13 +338,20 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       return;
     }
     
-    // Prepare reservation data for API
+    // Prepare reservation data for API with exact hours
+    // Create dates with minutes and seconds set to zero
+    const startDate = new Date(selectedDate);
+    startDate.setHours(selectedTimeSlot, 0, 0, 0);
+    
+    const endDate = new Date(selectedDate);
+    endDate.setHours(selectedTimeSlot + selectedDuration, 0, 0, 0);
+    
     const reservationData = {
       roomId: selectedRoom.id,
       // Format dates as strings for API compatibility
       reservationDate: format(selectedDate, 'yyyy-MM-dd'),
-      startTime: format(setHours(new Date(selectedDate), selectedTimeSlot), 'yyyy-MM-dd HH:mm:ss'),
-      endTime: format(setHours(new Date(selectedDate), selectedTimeSlot + selectedDuration), 'yyyy-MM-dd HH:mm:ss'),
+      startTime: format(startDate, 'yyyy-MM-dd HH:mm:ss'),
+      endTime: format(endDate, 'yyyy-MM-dd HH:mm:ss'),
       purpose: purpose || "Study session",
       // If user is logged in, these fields will be associated with the user account
       // Otherwise, use the guest fields
@@ -371,14 +378,14 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       
       const newReservation = await response.json();
       
-      // Add reservation to local state
+      // Add reservation to local state with exact hours
       const clientReservation: Reservation = {
         id: newReservation.id,
         roomId: selectedRoom.id,
         date: selectedDate,
-        // Create proper Date objects with the correct date and time
-        startTime: new Date(format(setHours(new Date(selectedDate), selectedTimeSlot), 'yyyy-MM-dd HH:mm:ss')),
-        endTime: new Date(format(setHours(new Date(selectedDate), selectedTimeSlot + selectedDuration), 'yyyy-MM-dd HH:mm:ss')),
+        // Use the same startDate and endDate with minutes set to 0 for consistency
+        startTime: startDate,
+        endTime: endDate,
         userName,
         userEmail,
         purpose: purpose || "Study session"
@@ -410,7 +417,10 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   };
   
   const formatTimeSlot = (hour: number) => {
-    return format(setHours(new Date(), hour), 'h:mm a');
+    // Create a new date and set both hours and minutes (setting minutes to 0)
+    const date = new Date();
+    date.setHours(hour, 0, 0, 0);
+    return format(date, 'h:00 a');
   };
   
   const handleDurationChange = (value: string) => {
@@ -438,8 +448,11 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   // Calculate end time based on start time and duration
   const getEndTime = () => {
     if (selectedTimeSlot === null) return "";
-    const endTime = addHours(setHours(new Date(), selectedTimeSlot), selectedDuration);
-    return format(endTime, 'h:mm a');
+    // Create a new date, set hours to selected time slot and minutes to 0, then add the duration
+    const date = new Date();
+    date.setHours(selectedTimeSlot, 0, 0, 0);
+    const endTime = addHours(date, selectedDuration);
+    return format(endTime, 'h:00 a');
   };
   
   // Function to check if a time slot is bookable (available and within booking constraints)
