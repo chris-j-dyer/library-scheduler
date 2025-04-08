@@ -1,0 +1,84 @@
+Fix the calendar time slot bubbles to change color when reserved by implementing these specific changes:
+
+1. In src/Calendar.jsx:
+   - Find the renderTimeSlot function (around line 70-90)
+   - Modify the function to check the reservation status and apply the correct class and color
+   - Add this code in the function where the button's className is determined:
+
+   const isReserved = reservations.some(res => 
+     res.roomId === room.id && res.timeSlotId === timeSlot.id
+   );
+   
+   const buttonClass = `time-slot ${isReserved ? 'reserved' : 'available'}`;
+   
+   // Then in the return statement, update the button element:
+   return (
+     <button
+       className={buttonClass}
+       onClick={isReserved ? null : (e) => handleTimeSlotClick(e, room, timeSlot)}
+       disabled={isReserved}
+       style={{ backgroundColor: isReserved ? '#808080' : '#3498db' }}
+       key={`${room.id}-${timeSlot.id}`}
+     >
+       {timeSlot.time}
+     </button>
+   );
+
+2. In src/api/reservationService.js:
+   - Ensure the makeReservation function updates the UI after successful API call:
+   
+   export const makeReservation = async (roomId, timeSlotId, userId) => {
+     try {
+       const response = await fetch('/api/reservations', {
+         method: 'POST',
+         headers: { 'Content-Type': 'application/json' },
+         body: JSON.stringify({ roomId, timeSlotId, userId }),
+       });
+       const data = await response.json();
+       
+       if (data.success) {
+         // Update reservations state
+         return { success: true, data: data.reservation };
+       } else {
+         return { success: false, error: data.message };
+       }
+     } catch (error) {
+       console.error('Error making reservation:', error);
+       return { success: false, error: error.message };
+     }
+   };
+
+3. In src/styles.css (or your CSS file):
+   - Add these specific styles:
+   
+   .time-slot.available {
+     background-color: #3498db;
+     cursor: pointer;
+   }
+   
+   .time-slot.reserved {
+     background-color: #808080;
+     cursor: not-allowed;
+   }
+
+4. In the handleTimeSlotClick function in Calendar.jsx:
+   - Update the UI immediately after successful reservation:
+   
+   const handleTimeSlotClick = async (e, room, timeSlot) => {
+     try {
+       const result = await makeReservation(room.id, timeSlot.id, currentUser.id);
+       if (result.success) {
+         // Add this line to update UI immediately
+         e.target.className = 'time-slot reserved';
+         e.target.style.backgroundColor = '#808080';
+         e.target.disabled = true;
+         
+         // Update reservations state
+         setReservations(prev => [...prev, result.data]);
+       } else {
+         alert('Failed to make reservation: ' + result.error);
+       }
+     } catch (error) {
+       console.error('Error in handleTimeSlotClick:', error);
+     }
+   };

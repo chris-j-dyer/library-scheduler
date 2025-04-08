@@ -9,6 +9,14 @@ import { format, setHours, addHours, isSameDay, parseISO } from "date-fns";
 import { Room as SchemaRoom, Reservation as SchemaReservation } from "@shared/schema";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+// Add a type declaration for the global window object
+declare global {
+  interface Window {
+    __lastClickedCell?: HTMLTableCellElement;
+    __lastClickedCellContent?: HTMLElement;
+  }
+}
+
 // Interface for room data with location string (for display)
 interface Room extends SchemaRoom {
   location?: string; // Display location (branch + floor)
@@ -567,7 +575,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     return timeSlots;
   };
   
-  const handleTimeSlotClick = (roomId: number, hour: number, isAvailable: boolean) => {
+  const handleTimeSlotClick = (roomId: number, hour: number, isAvailable: boolean, event?: React.MouseEvent) => {
     if (!isAvailable) {
       toast({
         title: "Time slot not available",
@@ -579,6 +587,13 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     
     const room = roomsData.find(r => r.id === roomId);
     if (room) {
+      // Store the DOM element that was clicked
+      if (event) {
+        // Save the clicked element to a ref so we can update it directly later
+        const target = event.currentTarget as HTMLTableCellElement;
+        window.__lastClickedCell = target;
+      }
+      
       setSelectedRoom(room);
       setSelectedTimeSlot(hour);
       setSelectedDuration(1); // Default to 1 hour
@@ -700,6 +715,22 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       setTimeout(() => {
         // Create a new date object to force a rerender of the component
         setLocalDate(new Date(selectedDate));
+        
+        // Also update the DOM directly if we have a reference to the clicked cell
+        if (window.__lastClickedCell) {
+          // Find the cell content div which has the 'available' class
+          const cellContent = window.__lastClickedCell.querySelector('div');
+          if (cellContent) {
+            // Store reference in window so it can be referenced in tests
+            window.__lastClickedCellContent = cellContent;
+            
+            // Update the class - remove 'available' and add 'occupied'
+            cellContent.classList.remove('available');
+            cellContent.classList.add('occupied');
+            
+            console.log('Direct DOM update - changed class from available to occupied');
+          }
+        }
       }, 500);
       
       // Close booking modal and show confirmation
@@ -917,7 +948,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
                 <td 
                   key={index} 
                   className="p-0 border border-gray-200"
-                  onClick={() => handleTimeSlotClick(room.id, slot.hour, slot.isAvailable)}
+                  onClick={(event) => handleTimeSlotClick(room.id, slot.hour, slot.isAvailable, event)}
                 >
                   <div 
                     className={cellClass}
