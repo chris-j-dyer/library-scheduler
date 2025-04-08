@@ -197,6 +197,8 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   const [userName, setUserName] = useState(user ? (user.name || user.username) : "");
   const [userEmail, setUserEmail] = useState(user ? (user.email || "") : "");
   const [purpose, setPurpose] = useState("");
+  
+  // Add local date state that can be used to force re-renders
   const [localDate, setLocalDate] = useState(new Date(selectedDate));
   const websocketRef = useRef<WebSocket | null>(null);
   
@@ -459,14 +461,6 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     // Create map to hold all availability data: Map<UniqueSlotId, boolean>
     const availabilityMap = new Map<string, boolean>();
     
-    // Function to generate a unique ID for each room+timeslot+date combination
-    const generateSlotId = (roomId: number, date: Date, hour: number) => {
-      const dateStr = format(date, 'yyyyMMdd');
-      const paddedRoomId = roomId.toString().padStart(2, '0');
-      const paddedHour = hour.toString().padStart(2, '0');
-      return `${paddedRoomId}${paddedHour}${dateStr}`;
-    };
-    
     // Pre-populate all slots as available (except weekend after hours)
     const selectedDateStr = format(selectedDate, 'yyyyMMdd');
     for (const room of roomsData) {
@@ -475,7 +469,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         const isAfterWeekendHours = isWeekend && hour >= 17;
         
         // Generate a unique ID for this slot
-        const slotId = generateSlotId(room.id, selectedDate, hour);
+        const slotId = generateSlotId(room.id, hour);
         
         // Mark as available unless it's after hours on weekend
         availabilityMap.set(slotId, !isAfterWeekendHours);
@@ -512,7 +506,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       
       // Mark all hours in this reservation as unavailable
       for (let hour = startHour; hour < endHour; hour++) {
-        const slotId = generateSlotId(reservation.roomId, selectedDate, hour);
+        const slotId = generateSlotId(reservation.roomId, hour);
         availabilityMap.set(slotId, false);
         console.log(`Marked slot ${slotId} as unavailable due to reservation #${reservation.id}`);
       }
@@ -521,7 +515,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     return {
       // Check if a slot is available
       isSlotAvailable: (roomId: number, hour: number) => {
-        const slotId = generateSlotId(roomId, selectedDate, hour);
+        const slotId = generateSlotId(roomId, hour);
         return availabilityMap.get(slotId) || false;
       },
       // Debug function to get all unavailable slots
@@ -533,8 +527,26 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     };
   }, [reservations, selectedDate, roomsData]);
   
-  // Simplified availability check function
+  // Create a manual override map for freshly booked slots
+  const [manuallyBookedSlots, setManuallyBookedSlots] = useState<Map<string, boolean>>(new Map());
+  
+  // Generate a unique ID for each room+hour+date combo
+  const generateSlotId = (roomId: number, hour: number) => {
+    const dateStr = format(selectedDate, 'yyyyMMdd');
+    const paddedRoomId = roomId.toString().padStart(2, '0');
+    const paddedHour = hour.toString().padStart(2, '0');
+    return `${paddedRoomId}${paddedHour}${dateStr}`;
+  };
+  
+  // Simplified availability check function that considers both our map and manual overrides
   const isTimeSlotAvailable = (roomId: number, hour: number) => {
+    // First check if we have a manual override from a fresh booking
+    const slotId = generateSlotId(roomId, hour);
+    if (manuallyBookedSlots.has(slotId)) {
+      return false; // This slot was just booked
+    }
+    
+    // Otherwise use the regular availability map
     return buildAvailabilityMap.isSlotAvailable(roomId, hour);
   };
   
@@ -693,14 +705,25 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         queryKey: ['/api/reservations/by-date', formattedDate] 
       });
       
-      // Mark this reservation's slots
-      markReservationSlots(newReservation, true);
-      
-      // Force a rerender to update the UI
-      setTimeout(() => {
-        // Create a new date object to force a rerender of the component
-        setLocalDate(new Date(selectedDate));
-      }, 500);
+      // Mark slots as manually booked in our state
+  const newBookedSlots = new Map(manuallyBookedSlots);
+  
+  // Get the time range from the reservation
+  const startHour = startDate.getHours();
+  const endHour = endDate.getHours();
+  
+  // Mark each affected hour
+  for (let hour = startHour; hour < endHour; hour++) {
+    const slotId = generateSlotId(selectedRoom.id, hour);
+    newBookedSlots.set(slotId, true);
+    console.log(`Directly marked slot ${slotId} as booked`);
+  }
+  
+  // Update the state with new booked slots
+  setManuallyBookedSlots(newBookedSlots);
+  
+  // Force a rerender to update the UI immediately
+  setLocalDate(new Date(selectedDate));
       
       // Close booking modal and show confirmation
       setIsModalOpen(false);
