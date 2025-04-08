@@ -1,7 +1,6 @@
-import React, { ReactElement } from 'react';
+import * as React from 'react';
 import { render, RenderOptions } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { AuthProvider } from '../client/src/hooks/use-auth';
 
 // Create a custom render method that includes providers
 const AllTheProviders = ({ children }: { children: React.ReactNode }) => {
@@ -16,15 +15,13 @@ const AllTheProviders = ({ children }: { children: React.ReactNode }) => {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        {children}
-      </AuthProvider>
+      {children}
     </QueryClientProvider>
   );
 };
 
 const customRender = (
-  ui: ReactElement,
+  ui: React.ReactElement,
   options?: Omit<RenderOptions, 'wrapper'>,
 ) => render(ui, { wrapper: AllTheProviders, ...options });
 
