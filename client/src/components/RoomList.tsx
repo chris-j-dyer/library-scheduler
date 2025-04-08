@@ -212,51 +212,61 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   
   // Transform raw API data into client-side reservation objects
   const transformReservations = useCallback((data: any[]): Reservation[] => {
+    // Debug raw data from API
+    console.log("Raw data from API:", JSON.stringify(data));
+    
     return data.map((res: any) => {
-      console.log(`Processing reservation #${res.id}:`, {
-        reservationDate: res.reservationDate,
-        startTime: res.startTime,
-        endTime: res.endTime,
-        status: res.status || 'confirmed'
-      });
+      console.log(`Processing reservation #${res.id}, roomId=${res.roomId}, status=${res.status || 'confirmed'}`);
       
-      // Ensure we have valid date objects by parsing strings
-      const resDate = new Date(res.reservationDate);
-      const startTime = new Date(res.startTime);
-      const endTime = new Date(res.endTime);
-      
-      console.log(`Parsed dates for reservation #${res.id}:`, {
-        date: format(resDate, 'yyyy-MM-dd'),
-        startTime: format(startTime, 'yyyy-MM-dd HH:mm:ss'),
-        endTime: format(endTime, 'yyyy-MM-dd HH:mm:ss')
-      });
-      
-      // Map server data to client Reservation with proper Date objects
-      const reservation: Reservation = {
-        id: res.id,
-        roomId: res.roomId,
-        userId: res.userId || null,
-        guestName: res.guestName || null,
-        guestEmail: res.guestEmail || null,
-        // Keep original reservationDate as string (DB format)
-        reservationDate: res.reservationDate,
-        // Store times as proper Date objects for UI manipulation
-        startTime: startTime,
-        endTime: endTime,
-        purpose: res.purpose || 'Reservation',
-        status: res.status || 'confirmed',
-        confirmationCode: res.confirmationCode || null,
-        notes: res.notes || null,
-        createdAt: res.createdAt ? new Date(res.createdAt) : new Date(),
-        updatedAt: res.updatedAt ? new Date(res.updatedAt) : null,
-        // Client-side display properties
-        date: resDate, // Parsed date for UI
-        userName: res.userId ? (res.userName || 'User') : res.guestName,
-        userEmail: res.userId ? (res.userEmail || '') : res.guestEmail
-      };
-      
-      console.log(`Processed reservation #${reservation.id}: room ${reservation.roomId}, ${format(reservation.date, 'yyyy-MM-dd')} at ${format(reservation.startTime, 'HH:mm')}-${format(reservation.endTime, 'HH:mm')}, status=${reservation.status}`);
-      return reservation;
+      try {
+        // Make sure we have dates in the correct format
+        const resDate = new Date(res.reservationDate);
+        const startTime = new Date(res.startTime);
+        const endTime = new Date(res.endTime);
+        
+        // Map server data to client Reservation with proper Date objects
+        const reservation: Reservation = {
+          id: res.id,
+          roomId: res.roomId,
+          userId: res.userId || null,
+          guestName: res.guestName || null,
+          guestEmail: res.guestEmail || null,
+          // Keep original reservationDate as string (DB format)
+          reservationDate: res.reservationDate,
+          // Store times as proper Date objects for UI manipulation
+          startTime: startTime,
+          endTime: endTime,
+          purpose: res.purpose || 'Reservation',
+          status: res.status || 'confirmed', // Default to confirmed if not specified
+          confirmationCode: res.confirmationCode || null,
+          notes: res.notes || null,
+          createdAt: res.createdAt ? new Date(res.createdAt) : new Date(),
+          updatedAt: res.updatedAt ? new Date(res.updatedAt) : null,
+          // Client-side display properties
+          date: resDate, // Parsed date for UI
+          userName: res.userId ? (res.userName || 'User') : res.guestName,
+          userEmail: res.userId ? (res.userEmail || '') : res.guestEmail
+        };
+        
+        console.log(`Processed reservation #${reservation.id}:`, {
+          roomId: reservation.roomId,
+          date: format(reservation.date, 'yyyy-MM-dd'),
+          time: `${format(reservation.startTime, 'HH:mm')}-${format(reservation.endTime, 'HH:mm')}`,
+          status: reservation.status
+        });
+        
+        return reservation;
+      } catch (error) {
+        console.error(`Error processing reservation data:`, error, res);
+        // Return a safe fallback with the original data
+        return {
+          ...res,
+          startTime: new Date(res.startTime || Date.now()),
+          endTime: new Date(res.endTime || Date.now()),
+          date: new Date(res.reservationDate || Date.now()),
+          status: res.status || 'confirmed',
+        } as Reservation;
+      }
     });
   }, []);
   
@@ -587,6 +597,14 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   
   // Function to check if a time slot is bookable (available and within booking constraints)
   const isTimeSlotBookable = (roomId: number, hour: number, consecutive: number = 1) => {
+    // Log all reservations for debugging
+    console.log(`ALL RESERVATIONS (${reservations.length} total):`, JSON.stringify(reservations.map(r => ({
+      id: r.id, roomId: r.roomId, status: r.status,
+      date: (r.date ? format(r.date, 'yyyy-MM-dd') : null) || (r.reservationDate || 'unknown'),
+      startTime: typeof r.startTime === 'string' ? r.startTime : format(r.startTime, 'HH:mm:ss'),
+      endTime: typeof r.endTime === 'string' ? r.endTime : format(r.endTime, 'HH:mm:ss')
+    }))));
+    
     // Get the next 'consecutive' hours and check if they're all available
     for (let i = 0; i < consecutive; i++) {
       const currentHour = hour + i;
@@ -598,68 +616,72 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       const isWeekend = [0, 6].includes(selectedDate.getDay()); // 0 = Sunday, 6 = Saturday
       if (isWeekend && currentHour >= 17) return false; // Weekend after 5pm
       
-      console.log(`Checking if hour ${currentHour} is bookable for room ${roomId}`);
+      // Simplified approach: search directly for any confirmed reservation that blocks this time slot
+      const targetDateStr = format(selectedDate, 'yyyy-MM-dd');
       
-      // Get all reservations for this room on the selected date
-      const roomReservations = reservations.filter(r => {
-        // Check room first
-        if (r.roomId !== roomId) return false;
-        
-        // Check date match
-        const resDate = r.date || new Date(r.reservationDate);
-        const resDateStr = format(resDate, 'yyyy-MM-dd');
-        const selectedDateStr = format(selectedDate, 'yyyy-MM-dd');
-        
-        return resDateStr === selectedDateStr;
-      });
+      console.log(`Checking if hour ${currentHour} is bookable for room ${roomId} on ${targetDateStr}`);
       
-      if (roomReservations.length > 0) {
-        console.log(`Found ${roomReservations.length} reservations for room ${roomId} on ${format(selectedDate, 'yyyy-MM-dd')}`);
-      }
-      
-      // Check if any active reservations overlap with this time slot
-      const isReserved = roomReservations.some(reservation => {
-        // Skip cancelled reservations - they don't block time slots
-        if (reservation.status === 'cancelled') {
-          console.log(`Reservation ${reservation.id} is cancelled, skipping`);
+      // Find any reservation that:
+      // 1. Is for this room
+      // 2. Is on the selected date
+      // 3. Has status 'confirmed'
+      // 4. Overlaps with the current hour
+      const blockedByReservation = reservations.find(r => {
+        // Must be for this room
+        if (r.roomId !== roomId) {
           return false;
         }
         
-        // Handle different types of date formats in the data
-        let startTime: Date, endTime: Date;
-        
-        if (typeof reservation.startTime === 'string') {
-          startTime = new Date(reservation.startTime);
-          endTime = new Date(reservation.endTime);
-        } else {
-          startTime = reservation.startTime;
-          endTime = reservation.endTime;
+        // Must be confirmed (not cancelled)
+        if (r.status !== 'confirmed') {
+          console.log(`Skipping reservation #${r.id} because status is ${r.status}`);
+          return false;
         }
         
-        // Get hours for comparison
+        // Check date match using ISO date strings for reliable comparison
+        const reservationDateObj = r.date || new Date(r.reservationDate);
+        const reservationDateStr = format(reservationDateObj, 'yyyy-MM-dd');
+        if (reservationDateStr !== targetDateStr) {
+          console.log(`Skipping reservation #${r.id} because date ${reservationDateStr} !== ${targetDateStr}`);
+          return false;
+        }
+        
+        // Get the reservation times
+        let startTime: Date, endTime: Date;
+        
+        if (typeof r.startTime === 'string') {
+          startTime = new Date(r.startTime);
+          endTime = new Date(r.endTime);
+        } else {
+          startTime = r.startTime;
+          endTime = r.endTime;
+        }
+        
+        // Extract hours
         const startHour = startTime.getHours();
         const endHour = endTime.getHours();
         
-        // Log the comparison for debugging
-        console.log(`Comparing hour ${currentHour} with reservation #${reservation.id} hours: ${startHour}-${endHour} (status: ${reservation.status})`);
+        console.log(`Checking reservation #${r.id} with time range ${startHour}-${endHour} against hour ${currentHour}`);
         
         // Check if current hour falls within the reservation time range
         const isOverlapping = currentHour >= startHour && currentHour < endHour;
         
-        if (isOverlapping && reservation.status === 'confirmed') {
-          console.log(`Hour ${currentHour} is BOOKED for room ${roomId} by reservation #${reservation.id}`);
+        if (isOverlapping) {
+          console.log(`Hour ${currentHour} for room ${roomId} is BOOKED by reservation #${r.id}!`);
           return true;
         }
         
         return false;
       });
       
-      if (isReserved) {
-        console.log(`Hour ${currentHour} for room ${roomId} is NOT available due to reservation`);
+      if (blockedByReservation) {
+        console.log(`Hour ${currentHour} for room ${roomId} is NOT AVAILABLE due to reservation #${blockedByReservation.id}`);
         return false;
       }
     }
     
+    // If we get here, this time slot is available
+    console.log(`Hour ${hour} for room ${roomId} is AVAILABLE`);
     return true;
   };
   
