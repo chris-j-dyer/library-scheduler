@@ -360,6 +360,17 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       variant: "destructive"
     });
   }
+
+  // Step 4: Refetch reservations every time the selected date changes
+  useEffect(() => {
+    if (!(selectedDate instanceof Date) || isNaN(selectedDate.getTime())) {
+      console.warn("Step 4: selectedDate is invalid, skipping reservation refetch.");
+      return;
+    }
+
+    console.log("Step 4: selectedDate changed — triggering reservation refetch");
+    reservationsQuery.refetch();
+  }, [selectedDate, reservationsQuery]);
   
   // Extract reservations from query result
   const reservations = reservationsQuery.data || [];
@@ -553,15 +564,9 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [reservationsQuery]);
-
-  // Add this useEffect to clear manually booked slots when date changes
-  useEffect(() => {
-    console.log('Date changed, clearing manually booked slots');
-    // Clear manually booked slots when date changes
-    setManuallyBookedSlots(new Map());
-  }, [selectedDate]);
   
   // Create a direct room+timeslot mapping for each reservation
+  console.log("⏳ Rebuilding availability map for selectedDate:", selectedDate, "with", reservations.length, "reservations");
   const buildAvailabilityMap = useMemo(() => {
     // Create map to hold all availability data: Map<UniqueSlotId, boolean>
     const availabilityMap = new Map<string, boolean>();
@@ -632,18 +637,8 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     };
   }, [reservations, selectedDate, roomsData]);
   
-  // Create a manual override map for freshly booked slots
-  const [manuallyBookedSlots, setManuallyBookedSlots] = useState<Map<string, boolean>>(new Map());
-  
   // Simplified availability check function that considers both our map and manual overrides
   const isTimeSlotAvailable = (roomId: number, hour: number) => {
-    // First check if we have a manual override from a fresh booking
-    const slotId = generateSlotId(roomId, hour, selectedDate);
-    if (manuallyBookedSlots.has(slotId)) {
-      return false; // This slot was just booked
-    }
-    
-    // Otherwise use the regular availability map
     return buildAvailabilityMap.isSlotAvailable(roomId, hour);
   };
   
@@ -659,7 +654,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       const isAfterWeekendHours = isWeekend && hour >= 17; // 5pm and later on weekends
       
       // Get availability from our pre-computed map
-      const isAvailable = !isAfterWeekendHours && isTimeSlotAvailable(roomId, hour);
+      const isAvailable = !isAfterWeekendHours && buildAvailabilityMap.isSlotAvailable(roomId, hour);
       
       timeSlots.push({
         hour,
@@ -769,7 +764,10 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       startHour: selectedTimeSlot,
       endHour: selectedTimeSlot + selectedDuration
     });
-
+    
+    const startHour = selectedTimeSlot;
+    const endHour = selectedTimeSlot + selectedDuration;
+    
     try {
       // Create reservation data with validated dates
       const reservationData = {
@@ -801,7 +799,14 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         throw new Error('Failed to create reservation');
       }
 
-      const newReservation = await response.json();
+      let newReservation;
+      try {
+        newReservation = await response.json();
+        console.log("Parsed reservation response:", newReservation);
+      } catch (parseError) {
+        console.error("Failed to parse reservation response JSON:", parseError);
+        throw new Error("Invalid reservation response format");
+      }
 
       // Map the API response to a client-side reservation with validated dates
       const clientReservation: Reservation = {
@@ -840,22 +845,10 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         queryKey: ['/api/reservations/by-date', formattedDate] 
       });
 
-      // Mark slots as manually booked in our state
-      const newBookedSlots = new Map(manuallyBookedSlots);
-
-      // Get the time range from the reservation
-      const startHour = startDate.getHours();
-      const endHour = endDate.getHours();
-
-      // Mark each affected hour
-      for (let hour = startHour; hour < endHour; hour++) {
-        const slotId = generateSlotId(selectedRoom.id, hour, selectedDate);
-        newBookedSlots.set(slotId, true);
-        console.log(`Directly marked slot ${slotId} as booked`);
-      }
-
-      // Update the state with new booked slots
-      setManuallyBookedSlots(newBookedSlots);
+      // Actually refetch it immediately and wait for it to finish
+      await queryClient.refetchQueries({
+        queryKey: ['/api/reservations/by-date', formattedDate]
+      });
 
       // Force a rerender to update the UI immediately
       setLocalDate(new Date(selectedDate));
@@ -864,20 +857,6 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       setIsModalOpen(false);
       setIsConfirmationOpen(true);
 
-      // IMPORTANT: Now immediately update the UI - find and update all affected cells
-      // This provides immediate visual feedback without waiting for re-render
-      for (let hour = startHour; hour < endHour; hour++) {
-        const cellElement = document.querySelector(
-          `[data-room-id="${selectedRoom.id}"][data-hour="${hour}"]`
-        );
-        if (cellElement) {
-          const cellDiv = cellElement.querySelector('.calendar-cell');
-          if (cellDiv) {
-            cellDiv.classList.remove('available');
-            cellDiv.classList.add('occupied');
-          }
-        }
-      }
     } catch (error) {
       console.error('Error creating reservation:', error);
       toast({
