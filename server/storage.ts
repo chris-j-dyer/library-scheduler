@@ -14,6 +14,7 @@ import { format } from "date-fns";
 import session from "express-session";
 import createMemoryStore from "memorystore";
 import { sql, eq, and } from "drizzle-orm";
+import { DateTime } from "luxon";
 
 // Expanded storage interface with CRUD operations for all our models
 export interface IStorage {
@@ -239,14 +240,12 @@ export class MemStorage implements IStorage {
       ? reservation.reservationDate
       : format(reservation.reservationDate as Date, 'yyyy-MM-dd');
     
-    // Convert startTime to Date if it's a string
     const startTime = typeof reservation.startTime === 'string'
-      ? new Date(reservation.startTime)
+      ? DateTime.fromISO(reservation.startTime, { zone: 'America/New_York' }).toJSDate()
       : reservation.startTime;
-      
-    // Convert endTime to Date if it's a string
+
     const endTime = typeof reservation.endTime === 'string'
-      ? new Date(reservation.endTime)
+      ? DateTime.fromISO(reservation.endTime, { zone: 'America/New_York' }).toJSDate()
       : reservation.endTime;
     
     // Generate a random confirmation code if not provided
@@ -680,10 +679,24 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createReservation(reservation: InsertReservation): Promise<Reservation> {
+    // Force time parsing in Eastern Time if start/end are strings
+    const startTime = typeof reservation.startTime === 'string'
+      ? DateTime.fromISO(reservation.startTime, { zone: 'America/New_York' }).toJSDate()
+      : reservation.startTime;
+
+    const endTime = typeof reservation.endTime === 'string'
+      ? DateTime.fromISO(reservation.endTime, { zone: 'America/New_York' }).toJSDate()
+      : reservation.endTime;
+
     const [newReservation] = await db
       .insert(schema.reservations)
-      .values(reservation)
+      .values({
+        ...reservation,
+        startTime,
+        endTime
+      })
       .returning();
+
     return newReservation;
   }
 

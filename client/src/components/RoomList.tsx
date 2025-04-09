@@ -8,6 +8,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { format, setHours, addHours, isSameDay, parseISO } from "date-fns";
 import { Room as SchemaRoom, Reservation as SchemaReservation } from "@shared/schema";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { DateTime } from "luxon";
 
 // Utility function to safely format dates
 const safeFormat = (date: Date | string | null | undefined, formatString: string): string => {
@@ -267,53 +268,48 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   
   // Transform raw API data into client-side reservation objects
   const transformReservations = useCallback((data: any[]): Reservation[] => {
-    // Debug raw data from API
     console.log("Raw data from API:", JSON.stringify(data));
-    
+
     return data.map((res: any) => {
       console.log(`Processing reservation #${res.id}, roomId=${res.roomId}, status=${res.status || 'confirmed'}`);
-      
+
       try {
-        // Make sure we have dates in the correct format
-        const resDate = new Date(res.reservationDate + 'T00:00:00');
-        const startTime = new Date(Date.parse(res.startTime));
-        const endTime = new Date(Date.parse(res.endTime));
-        
-        // Map server data to client Reservation with proper Date objects
+        console.log("🔍 Raw incoming startTime from API:", res.startTime);
+
+        const resDate = DateTime.fromISO(res.reservationDate, { zone: 'utc' }).setZone('America/New_York').toJSDate();
+        const startTime = DateTime.fromISO(res.startTime, { zone: 'utc' }).setZone('America/New_York').toJSDate();
+        const endTime = DateTime.fromISO(res.endTime, { zone: 'utc' }).setZone('America/New_York').toJSDate();
+
         const reservation: Reservation = {
           id: res.id,
           roomId: res.roomId,
           userId: res.userId || null,
           guestName: res.guestName || null,
           guestEmail: res.guestEmail || null,
-          // Keep original reservationDate as string (DB format)
           reservationDate: res.reservationDate,
-          // Store times as proper Date objects for UI manipulation
-          startTime: startTime,
-          endTime: endTime,
+          startTime,
+          endTime,
           purpose: res.purpose || 'Reservation',
-          status: res.status || 'confirmed', // Default to confirmed if not specified
+          status: res.status || 'confirmed',
           confirmationCode: res.confirmationCode || null,
           notes: res.notes || null,
           createdAt: res.createdAt ? new Date(res.createdAt) : new Date(),
           updatedAt: res.updatedAt ? new Date(res.updatedAt) : null,
-          // Client-side display properties
-          date: resDate, // Parsed date for UI
+          date: resDate,
           userName: res.userId ? (res.userName || 'User') : res.guestName,
           userEmail: res.userId ? (res.userEmail || '') : res.guestEmail
         };
-        
+
         console.log(`Processed reservation #${reservation.id}:`, {
           roomId: reservation.roomId,
           date: format(reservation.date, 'yyyy-MM-dd'),
           time: `${safeFormat(reservation.startTime, 'HH:mm')}-${safeFormat(reservation.endTime, 'HH:mm')}`,
           status: reservation.status
         });
-        
+
         return reservation;
       } catch (error) {
         console.error(`Error processing reservation data:`, error, res);
-        // Return a safe fallback with the original data
         return {
           ...res,
           startTime: new Date(res.startTime || Date.now()),
@@ -792,16 +788,18 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     const endHour = selectedTimeSlot + selectedDuration;
     
     try {
+      // Format Date as ISO string in EST/EDT (America/New_York)
+      const formatEST = (date: Date) =>
+        date.toLocaleString('sv-SE', { timeZone: 'America/New_York', hour12: false }).replace(' ', 'T');
+
       // Create reservation data with validated dates
       const reservationData = {
         roomId: selectedRoom.id,
         // Format dates as strings for API compatibility with validation
         reservationDate: safeFormat(selectedDate, 'yyyy-MM-dd'),
-        startTime: safeFormat(startDate, 'yyyy-MM-dd HH:mm:ss'),
-        endTime: safeFormat(endDate, 'yyyy-MM-dd HH:mm:ss'),
+        startTime: formatEST(startDate), // ⬅️ EST
+        endTime: formatEST(endDate),     // ⬅️ EST
         purpose: purpose || "Study session",
-        // If user is logged in, these fields will be associated with the user account
-        // Otherwise, use the guest fields
         guestName: userName,
         guestEmail: userEmail,
         status: "confirmed",
