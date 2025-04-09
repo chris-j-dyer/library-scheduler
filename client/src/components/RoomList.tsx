@@ -9,6 +9,30 @@ import { format, setHours, addHours, isSameDay, parseISO } from "date-fns";
 import { Room as SchemaRoom, Reservation as SchemaReservation } from "@shared/schema";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
+// Utility function to safely format dates
+const safeFormat = (date: Date | string | null | undefined, formatString: string): string => {
+  if (!date) return '';
+
+  let dateObj: Date;
+  if (typeof date === 'string') {
+    dateObj = new Date(date);
+  } else {
+    dateObj = date as Date;
+  }
+
+  if (!(dateObj instanceof Date) || isNaN(dateObj.getTime())) {
+    console.error('Invalid date provided to safeFormat:', date);
+    return 'Invalid Date';
+  }
+
+  try {
+    return format(dateObj, formatString);
+  } catch (error) {
+    console.error('Error formatting date:', error, date);
+    return 'Error';
+  }
+};
+
 // Interface for room data with location string (for display)
 interface Room extends SchemaRoom {
   location?: string; // Display location (branch + floor)
@@ -197,9 +221,52 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   const [userName, setUserName] = useState(user ? (user.name || user.username) : "");
   const [userEmail, setUserEmail] = useState(user ? (user.email || "") : "");
   const [purpose, setPurpose] = useState("");
+  const [localDate, setLocalDate] = useState(new Date(selectedDate));
+
+  // Add this near the top of your component, after other state declarations
+  const [cachedReservationsByDate, setCachedReservationsByDate] = useState<Record<string, any[]>>({});
+
+  // Then modify the useEffect that runs when reservationsQuery data changes
+  useEffect(() => {
+    if (reservationsQuery.data && Array.isArray(reservationsQuery.data)) {
+      // Store these reservations in our cache by date
+      setCachedReservationsByDate(prev => ({
+        ...prev,
+        [formattedDate]: reservationsQuery.data
+      }));
+      console.log(`Cached reservations for ${formattedDate}`);
+    }
+  }, [reservationsQuery.data, formattedDate]);
+
+  // Check if selectedDate is valid early
+  useEffect(() => {
+    // Step 4 console logs
+    console.log('RoomList initializing with selectedDate:', selectedDate);
+    console.log('RoomList selectedDate type:', Object.prototype.toString.call(selectedDate));
+    console.log('RoomList selectedDate valid?', selectedDate instanceof Date && !isNaN(selectedDate.getTime()));
+    
+    if (!(selectedDate instanceof Date) || isNaN(selectedDate.getTime())) {
+      console.error('Invalid selectedDate provided to RoomList component:', selectedDate);
+      // Use current date as fallback
+      const today = new Date();
+      console.log('Using today as fallback:', today);
+      setLocalDate(today);
+    } else {
+      // Clone the date to avoid reference issues
+      setLocalDate(new Date(selectedDate));
+    }
+  }, [selectedDate]);
+
+  // Define this at the very top of the component, right after the RoomList function declaration
+  function generateSlotId(roomId: number, hour: number, dateObject: Date) {
+    const dateStr = format(dateObject, 'yyyyMMdd'); 
+    const paddedRoomId = roomId.toString().padStart(2, '0');
+    const paddedHour = hour.toString().padStart(2, '0');
+    console.log(`Generated slot ID for room ${roomId}, hour ${hour}, date ${dateStr}: ${paddedRoomId}${paddedHour}${dateStr}`);
+    return `${paddedRoomId}${paddedHour}${dateStr}`;
+  }
   
   // Add local date state that can be used to force re-renders
-  const [localDate, setLocalDate] = useState(new Date(selectedDate));
   const websocketRef = useRef<WebSocket | null>(null);
   
   // Update user info when user changes (logs in/out)
@@ -274,24 +341,29 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   }, []);
   
   // Fetch reservations for the selected date using React Query
-  const formattedDate = format(selectedDate, 'yyyy-MM-dd');
+  const formattedDate = selectedDate instanceof Date && !isNaN(selectedDate.getTime()) 
+    ? format(selectedDate, 'yyyy-MM-dd')
+    : format(new Date(), 'yyyy-MM-dd'); // Use today as fallback
+
   const reservationsQuery = useQuery({
     queryKey: ['/api/reservations/by-date', formattedDate],
     queryFn: async () => {
       console.log(`Fetching reservations for date: ${formattedDate}`);
       const response = await fetch(`/api/reservations/by-date/${formattedDate}`);
-      
+
       if (!response.ok) {
         console.error(`Error response from server: ${response.status} ${response.statusText}`);
         throw new Error('Failed to fetch reservations');
       }
-      
+
       const data = await response.json();
       console.log('Reservations data received:', data);
       return data;
     },
     select: transformReservations,
-    staleTime: 5 * 60 * 1000, // Consider data fresh for 5 minutes
+    staleTime: 5 * 60 * 1000, // 5 minutes - data remains fresh longer
+    refetchOnMount: 'always', // Always refetch when component mounts
+    refetchOnWindowFocus: true, // Refetch when window gets focus
   });
   
   // Handle errors from the query
@@ -330,7 +402,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       const dateStr = format(selectedDate, 'yyyyMMdd');
       const paddedRoomId = roomId.toString().padStart(2, '0');
       const paddedHour = hour.toString().padStart(2, '0');
-      const slotId = `${paddedRoomId}${paddedHour}${dateStr}`;
+      const slotId = generateSlotId(roomId, hour, selectedDate);
       occupiedSlots.push(slotId);
     }
     
@@ -474,6 +546,42 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       }
     };
   }, [localDate, queryClient, toast, markReservationSlots]);
+
+  // Add this after your other useEffects - usually around line 300-350
+  useEffect(() => {
+    // This will run when the component mounts or when you return to this page
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        // Page is now visible (user returned to this tab)
+        console.log('Page visible, refreshing reservations');
+        reservationsQuery.refetch();
+      }
+    };
+
+    // Listen for visibility changes
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    // Refresh on initial mount too
+    reservationsQuery.refetch();
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [reservationsQuery]);
+
+  // Replace the existing useEffect for clearing manually booked slots
+  useEffect(() => {
+    // Only clear manually booked slots when actually changing to a different date,
+    // not when we're just refreshing the view of the same date
+    const currentDateStr = format(selectedDate, 'yyyy-MM-dd');
+    const prevDateRef = useRef(currentDateStr);
+
+    if (prevDateRef.current !== currentDateStr) {
+      console.log('Date actually changed from', prevDateRef.current, 'to', currentDateStr, 'clearing manually booked slots');
+      setManuallyBookedSlots(new Map());
+      prevDateRef.current = currentDateStr;
+    }
+  }, [selectedDate]);
   
   // Create a direct room+timeslot mapping for each reservation
   const buildAvailabilityMap = useMemo(() => {
@@ -488,7 +596,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         const isAfterWeekendHours = isWeekend && hour >= 17;
         
         // Generate a unique ID for this slot
-        const slotId = generateSlotId(room.id, hour);
+        const slotId = generateSlotId(room.id, hour, selectedDate);
         
         // Mark as available unless it's after hours on weekend
         availabilityMap.set(slotId, !isAfterWeekendHours);
@@ -525,7 +633,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       
       // Mark all hours in this reservation as unavailable
       for (let hour = startHour; hour < endHour; hour++) {
-        const slotId = generateSlotId(reservation.roomId, hour);
+        const slotId = generateSlotId(reservation.roomId, hour, selectedDate);
         availabilityMap.set(slotId, false);
         console.log(`Marked slot ${slotId} as unavailable due to reservation #${reservation.id}`);
       }
@@ -534,7 +642,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     return {
       // Check if a slot is available
       isSlotAvailable: (roomId: number, hour: number) => {
-        const slotId = generateSlotId(roomId, hour);
+        const slotId = generateSlotId(roomId, hour, selectedDate);
         return availabilityMap.get(slotId) || false;
       },
       // Debug function to get all unavailable slots
@@ -549,21 +657,10 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   // Create a manual override map for freshly booked slots
   const [manuallyBookedSlots, setManuallyBookedSlots] = useState<Map<string, boolean>>(new Map());
   
-  // Generate a unique ID for each room+hour+date combo
-  // Create a memoized version of generateSlotId that doesn't depend on selectedDate closure
-  const generateSlotId = useCallback((roomId: number, hour: number) => {
-    // Use localDate to ensure date is consistent with the component's current state
-    const dateStr = format(localDate, 'yyyyMMdd'); 
-    const paddedRoomId = roomId.toString().padStart(2, '0');
-    const paddedHour = hour.toString().padStart(2, '0');
-    console.log(`Generated slot ID for room ${roomId}, hour ${hour}, date ${dateStr}: ${paddedRoomId}${paddedHour}${dateStr}`);
-    return `${paddedRoomId}${paddedHour}${dateStr}`;
-  }, [localDate]); // Depend only on localDate
-  
   // Simplified availability check function that considers both our map and manual overrides
   const isTimeSlotAvailable = (roomId: number, hour: number) => {
     // First check if we have a manual override from a fresh booking
-    const slotId = generateSlotId(roomId, hour);
+    const slotId = generateSlotId(roomId, hour, selectedDate);
     if (manuallyBookedSlots.has(slotId)) {
       return false; // This slot was just booked
     }
@@ -601,7 +698,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     return timeSlots;
   };
   
-  const handleTimeSlotClick = (roomId: number, hour: number, isAvailable: boolean) => {
+  const handleTimeSlotClick = (roomId: number, hour: number, isAvailable: boolean, event: React.MouseEvent) => {
     if (!isAvailable) {
       toast({
         title: "Time slot not available",
@@ -610,7 +707,10 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       });
       return;
     }
-    
+
+    // Get the clicked element to update it later
+    const clickedCell = event.currentTarget;
+
     const room = roomsData.find(r => r.id === roomId);
     if (room) {
       setSelectedRoom(room);
@@ -630,7 +730,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   
   const handleBookingSubmit = async () => {
     if (!selectedRoom || selectedTimeSlot === null) return;
-    
+
     if (!userName || !userEmail) {
       toast({
         title: "Missing information",
@@ -639,31 +739,76 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       });
       return;
     }
-    
+
+    // Validate selected date before proceeding
+    if (!(selectedDate instanceof Date) || isNaN(selectedDate.getTime())) {
+      console.error("Invalid selectedDate:", selectedDate);
+      toast({
+        title: "Date Error",
+        description: "There was an error with the selected date. Please try again.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     // Prepare reservation data for API with exact hours
     // Create dates with minutes and seconds set to zero
     const startDate = new Date(selectedDate);
+
+    // Validate startDate before setting hours
+    if (isNaN(startDate.getTime())) {
+      console.error("Invalid startDate:", startDate);
+      toast({
+        title: "Date Error",
+        description: "There was an error processing the reservation time. Please try again.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     startDate.setHours(selectedTimeSlot, 0, 0, 0);
-    
+
     const endDate = new Date(selectedDate);
+
+    // Validate endDate before setting hours
+    if (isNaN(endDate.getTime())) {
+      console.error("Invalid endDate:", endDate);
+      toast({
+        title: "Date Error",
+        description: "There was an error processing the reservation time. Please try again.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     endDate.setHours(selectedTimeSlot + selectedDuration, 0, 0, 0);
-    
-    const reservationData = {
-      roomId: selectedRoom.id,
-      // Format dates as strings for API compatibility
-      reservationDate: format(selectedDate, 'yyyy-MM-dd'),
-      startTime: format(startDate, 'yyyy-MM-dd HH:mm:ss'),
-      endTime: format(endDate, 'yyyy-MM-dd HH:mm:ss'),
-      purpose: purpose || "Study session",
-      // If user is logged in, these fields will be associated with the user account
-      // Otherwise, use the guest fields
-      guestName: userName,
-      guestEmail: userEmail,
-      status: "confirmed",
-      confirmationCode: `LIB-${Math.floor(100000 + Math.random() * 900000)}`
-    };
-    
+
+    // Log the dates for debugging
+    console.log("Booking dates:", {
+      selectedDate: selectedDate,
+      startDate: startDate,
+      endDate: endDate,
+      startHour: selectedTimeSlot,
+      endHour: selectedTimeSlot + selectedDuration
+    });
+
     try {
+      // Create reservation data with validated dates
+      const reservationData = {
+        roomId: selectedRoom.id,
+        // Format dates as strings for API compatibility with validation
+        reservationDate: safeFormat(selectedDate, 'yyyy-MM-dd'),
+        startTime: safeFormat(startDate, 'yyyy-MM-dd HH:mm:ss'),
+        endTime: safeFormat(endDate, 'yyyy-MM-dd HH:mm:ss'),
+        purpose: purpose || "Study session",
+        // If user is logged in, these fields will be associated with the user account
+        // Otherwise, use the guest fields
+        guestName: userName,
+        guestEmail: userEmail,
+        status: "confirmed",
+        confirmationCode: `LIB-${Math.floor(100000 + Math.random() * 900000)}`
+      };
+
       // Call the API to create reservation
       const response = await fetch('/api/reservations', {
         method: 'POST',
@@ -673,19 +818,19 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         body: JSON.stringify(reservationData),
         credentials: 'include' // Include auth cookies
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to create reservation');
       }
-      
+
       const newReservation = await response.json();
-      
-      // Map the API response to a client-side reservation
+
+      // Map the API response to a client-side reservation with validated dates
       const clientReservation: Reservation = {
         // Include all fields from the server response
         ...newReservation,
         // Override with properly parsed dates
-        reservationDate: format(selectedDate, 'yyyy-MM-dd'), // ISO format string for DB
+        reservationDate: safeFormat(selectedDate, 'yyyy-MM-dd'), // ISO format string for DB
         startTime: startDate, // Date object for UI manipulation
         endTime: endDate, // Date object for UI manipulation
         // Make sure we have the right userId (for logged in users) or guest info
@@ -702,17 +847,8 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         userName, // Display name for UI
         userEmail // Display email for UI
       };
-      
-      console.log('Created client reservation:', {
-        id: clientReservation.id,
-        roomId: clientReservation.roomId,
-        date: format(clientReservation.date, 'yyyy-MM-dd'),
-        startTime: format(clientReservation.startTime, 'HH:mm:ss'),
-        endTime: format(clientReservation.endTime, 'HH:mm:ss')
-      });
-      
+
       // Update the query cache with the new reservation data
-      // This is more reliable than manually updating the local state
       queryClient.setQueryData(
         ['/api/reservations/by-date', formattedDate],
         (oldData: any[] | undefined) => {
@@ -720,36 +856,50 @@ export default function RoomList({ selectedDate }: RoomListProps) {
           return [...oldData, newReservation];
         }
       );
-      
+
       // Also invalidate the query to ensure it will be refetched next time
-      // This ensures data consistency in case the server's response is different
       queryClient.invalidateQueries({ 
         queryKey: ['/api/reservations/by-date', formattedDate] 
       });
-      
+
       // Mark slots as manually booked in our state
       const newBookedSlots = new Map(manuallyBookedSlots);
-      
+
       // Get the time range from the reservation
       const startHour = startDate.getHours();
       const endHour = endDate.getHours();
-      
+
       // Mark each affected hour
       for (let hour = startHour; hour < endHour; hour++) {
-        const slotId = generateSlotId(selectedRoom.id, hour);
+        const slotId = generateSlotId(selectedRoom.id, hour, selectedDate);
         newBookedSlots.set(slotId, true);
         console.log(`Directly marked slot ${slotId} as booked`);
       }
-      
+
       // Update the state with new booked slots
       setManuallyBookedSlots(newBookedSlots);
-      
+
       // Force a rerender to update the UI immediately
       setLocalDate(new Date(selectedDate));
-      
+
       // Close booking modal and show confirmation
       setIsModalOpen(false);
       setIsConfirmationOpen(true);
+
+      // IMPORTANT: Now immediately update the UI - find and update all affected cells
+      // This provides immediate visual feedback without waiting for re-render
+      for (let hour = startHour; hour < endHour; hour++) {
+        const cellElement = document.querySelector(
+          `[data-room-id="${selectedRoom.id}"][data-hour="${hour}"]`
+        );
+        if (cellElement) {
+          const cellDiv = cellElement.querySelector('.calendar-cell');
+          if (cellDiv) {
+            cellDiv.classList.remove('available');
+            cellDiv.classList.add('occupied');
+          }
+        }
+      }
     } catch (error) {
       console.error('Error creating reservation:', error);
       toast({
@@ -948,7 +1098,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
                 : isWeekendAfterHours
                   ? `Library closes at 5:00 PM on weekends`
                   : `Occupied at ${formatTimeSlot(slot.hour)}`;
-              
+
               let cellClass = 'calendar-cell';
               if (slot.isAvailable) {
                 cellClass += ' available';
@@ -957,12 +1107,14 @@ export default function RoomList({ selectedDate }: RoomListProps) {
               } else {
                 cellClass += ' occupied';
               }
-              
+
               return (
                 <td 
                   key={index} 
                   className="p-0 border border-gray-200"
-                  onClick={() => handleTimeSlotClick(room.id, slot.hour, slot.isAvailable)}
+                  onClick={(e) => handleTimeSlotClick(room.id, slot.hour, slot.isAvailable, e)}
+                  data-room-id={room.id}
+                  data-hour={slot.hour}
                 >
                   <div 
                     className={cellClass}
