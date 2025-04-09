@@ -276,8 +276,8 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       try {
         // Make sure we have dates in the correct format
         const resDate = new Date(res.reservationDate);
-        const startTime = new Date(res.startTime);
-        const endTime = new Date(res.endTime);
+        const startTime = new Date(Date.parse(res.startTime));
+        const endTime = new Date(Date.parse(res.endTime));
         
         // Map server data to client Reservation with proper Date objects
         const reservation: Reservation = {
@@ -306,7 +306,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         console.log(`Processed reservation #${reservation.id}:`, {
           roomId: reservation.roomId,
           date: format(reservation.date, 'yyyy-MM-dd'),
-          time: `${format(reservation.startTime, 'HH:mm')}-${format(reservation.endTime, 'HH:mm')}`,
+          time: `${safeFormat(reservation.startTime, 'HH:mm')}-${safeFormat(reservation.endTime, 'HH:mm')}`
           status: reservation.status
         });
         
@@ -350,6 +350,14 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     refetchOnMount: true, // Always refetch when component mounts
     refetchOnWindowFocus: true, // Refetch when window gets focus (returning from another tab/page)
   });
+
+  useEffect(() => {
+    if (reservationsQuery.isSuccess && reservationsQuery.data) {
+      console.log("✅ New reservation data fetched, triggering availability map rebuild");
+      console.log("📦 Received reservations from API:", reservationsQuery.data);
+      setLocalDate(new Date()); // <- this forces a re-render
+    }
+  }, [reservationsQuery.data]);
   
   // Handle errors from the query
   if (reservationsQuery.error) {
@@ -399,6 +407,10 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       const paddedRoomId = roomId.toString().padStart(2, '0');
       const paddedHour = hour.toString().padStart(2, '0');
       const slotId = generateSlotId(roomId, hour, selectedDate);
+
+      // ✅ STEP 1 log: show which slot this reservation is blocking
+      console.log(`⛔ Marking slot ${slotId} as unavailable due to reservation ${reservation.id}`);
+
       occupiedSlots.push(slotId);
     }
     
@@ -570,6 +582,9 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   const buildAvailabilityMap = useMemo(() => {
     // Create map to hold all availability data: Map<UniqueSlotId, boolean>
     const availabilityMap = new Map<string, boolean>();
+
+    // ✅ STEP 1 DEBUG
+    console.log("✅ availabilityMap useMemo is running");
     
     // Pre-populate all slots as available (except weekend after hours)
     const selectedDateStr = format(selectedDate, 'yyyyMMdd');
@@ -585,7 +600,12 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         availabilityMap.set(slotId, !isAfterWeekendHours);
       }
     }
-    
+
+    console.log("📅 Building availability map with the following reservations:");
+    reservations.forEach(r => {
+      console.log(`- Reservation #${r.id}: Room ${r.roomId}, ${format(r.startTime, 'HH:mm')}–${format(r.endTime, 'HH:mm')}, Status: ${r.status}, Date: ${r.reservationDate}`);
+    });
+        
     // Mark booked slots as unavailable
     console.log(`Marking reserved slots from ${reservations.length} reservations`);
     for (const reservation of reservations) {
@@ -621,6 +641,9 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         console.log(`Marked slot ${slotId} as unavailable due to reservation #${reservation.id}`);
       }
     }
+
+    // ✅ Add this here:
+    console.log('✅ Final availability map:', Array.from(availabilityMap.entries()));
     
     return {
       // Check if a slot is available
@@ -1065,6 +1088,8 @@ export default function RoomList({ selectedDate }: RoomListProps) {
                 cellClass += ' occupied';
               }
 
+            console.log(`🟢 Rendering slot for Room ${room.id}, Hour ${slot.hour} → Available: ${slot.isAvailable}`);
+            
               return (
                 <td 
                   key={index} 
