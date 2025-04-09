@@ -276,7 +276,8 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       try {
         console.log("🔍 Raw incoming startTime from API:", res.startTime);
 
-        const resDate = DateTime.fromISO(res.reservationDate, { zone: 'utc' }).setZone('America/New_York').toJSDate();
+        // Fix to force reservation date to local noon so it never shifts backward
+        const resDate = DateTime.fromISO(res.reservationDate).toJSDate();
         const startTime = DateTime.fromISO(res.startTime, { zone: 'utc' }).setZone('America/New_York').toJSDate();
         const endTime = DateTime.fromISO(res.endTime, { zone: 'utc' }).setZone('America/New_York').toJSDate();
 
@@ -575,6 +576,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   
   // Create a direct room+timeslot mapping for each reservation
   console.log("⏳ Rebuilding availability map for selectedDate:", selectedDate, "with", reservations.length, "reservations");
+  console.log("📦 Received reservations from API in RoomList:", reservations);
   const buildAvailabilityMap = useMemo(() => {
     // Create map to hold all availability data: Map<UniqueSlotId, boolean>
     const availabilityMap = new Map<string, boolean>();
@@ -605,36 +607,34 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     // Mark booked slots as unavailable
     console.log(`Marking reserved slots from ${reservations.length} reservations`);
     for (const reservation of reservations) {
-      // Skip cancelled reservations
       if (reservation.status === 'cancelled') {
-        console.log(`Skipping cancelled reservation #${reservation.id}`);
+        console.log(`⏭ Skipping cancelled reservation #${reservation.id}`);
         continue;
       }
 
-      // Only process reservations for the selected date
       const resDate = reservation.date || new Date(reservation.reservationDate);
       if (!isSameDay(resDate, selectedDate)) {
+        console.log(`⏭ Skipping reservation #${reservation.id} — date mismatch:`, format(resDate, 'yyyy-MM-dd'), 'vs', format(selectedDate, 'yyyy-MM-dd'));
         continue;
       }
-      
-      // Get times for this reservation
-      const startTime = typeof reservation.startTime === 'string' 
-        ? new Date(reservation.startTime) 
+
+      const startTime = typeof reservation.startTime === 'string'
+        ? new Date(reservation.startTime)
         : reservation.startTime;
-        
+
       const endTime = typeof reservation.endTime === 'string'
         ? new Date(reservation.endTime)
         : reservation.endTime;
-        
-      // Get start and end hours
+
       const startHour = startTime.getHours();
       const endHour = endTime.getHours();
-      
-      // Mark all hours in this reservation as unavailable
+
+      console.log(`⛔ Reservation #${reservation.id} blocking room ${reservation.roomId} from ${startHour} to ${endHour}`);
+
       for (let hour = startHour; hour < endHour; hour++) {
         const slotId = generateSlotId(reservation.roomId, hour, selectedDate);
         availabilityMap.set(slotId, false);
-        console.log(`Marked slot ${slotId} as unavailable due to reservation #${reservation.id}`);
+        console.log(`❌ Marked slot ${slotId} as unavailable`);
       }
     }
 
@@ -673,15 +673,15 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       const isAfterWeekendHours = isWeekend && hour >= 17; // 5pm and later on weekends
       
       // Get availability from our pre-computed map
-      const isAvailable = !isAfterWeekendHours && buildAvailabilityMap.isSlotAvailable(roomId, hour);
+      const isAvailable = buildAvailabilityMap.isSlotAvailable(roomId, hour) && !isAfterWeekendHours;
       
       timeSlots.push({
         hour,
         isAvailable
       });
-      
-      // Log the schedule for debugging
-      console.log(`Room ${roomId}, Hour ${hour}: ${isAvailable ? 'Available' : 'Occupied'}`);
+
+      // ⬇️ THIS is where to add your log
+      console.log(`Rendering room ${roomId}, hour ${hour}, available: ${isAvailable}`);
     }
     
     // Log all unavailable slots for debugging
