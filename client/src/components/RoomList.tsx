@@ -275,7 +275,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       
       try {
         // Make sure we have dates in the correct format
-        const resDate = new Date(res.reservationDate);
+        const resDate = new Date(res.reservationDate + 'T00:00:00');
         const startTime = new Date(Date.parse(res.startTime));
         const endTime = new Date(Date.parse(res.endTime));
         
@@ -306,7 +306,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
         console.log(`Processed reservation #${reservation.id}:`, {
           roomId: reservation.roomId,
           date: format(reservation.date, 'yyyy-MM-dd'),
-          time: `${safeFormat(reservation.startTime, 'HH:mm')}-${safeFormat(reservation.endTime, 'HH:mm')}`
+          time: `${safeFormat(reservation.startTime, 'HH:mm')}-${safeFormat(reservation.endTime, 'HH:mm')}`,
           status: reservation.status
         });
         
