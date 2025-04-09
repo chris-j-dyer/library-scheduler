@@ -11,6 +11,7 @@ import {
 import { ZodError, z } from "zod";
 import { format } from "date-fns";
 import { setupAuth } from "./auth";
+import { DateTime } from "luxon";
 
 // Extend Express Request to include session
 declare module "express-serve-static-core" {
@@ -353,18 +354,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       // Convert to the appropriate format if needed
       if (typeof reservationData.reservationDate === 'string') {
+        // This is just a date string (no time), so it's safe to convert with new Date()
         reservationData.reservationDate = new Date(reservationData.reservationDate);
         console.log("Converted reservationDate:", reservationData.reservationDate);
       }
-      
+
       if (typeof reservationData.startTime === 'string') {
-        reservationData.startTime = new Date(reservationData.startTime);
-        console.log("Converted startTime:", reservationData.startTime);
+        reservationData.startTime = DateTime.fromISO(reservationData.startTime, { zone: 'America/New_York' }).toJSDate();
+        console.log("Converted startTime (EST):", reservationData.startTime);
       }
-      
+
       if (typeof reservationData.endTime === 'string') {
-        reservationData.endTime = new Date(reservationData.endTime);
-        console.log("Converted endTime:", reservationData.endTime);
+        reservationData.endTime = DateTime.fromISO(reservationData.endTime, { zone: 'America/New_York' }).toJSDate();
+        console.log("Converted endTime (EST):", reservationData.endTime);
       }
       
       // Log the processed data before validation
