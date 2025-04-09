@@ -223,21 +223,6 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   const [purpose, setPurpose] = useState("");
   const [localDate, setLocalDate] = useState(new Date(selectedDate));
 
-  // Add this near the top of your component, after other state declarations
-  const [cachedReservationsByDate, setCachedReservationsByDate] = useState<Record<string, any[]>>({});
-
-  // Then modify the useEffect that runs when reservationsQuery data changes
-  useEffect(() => {
-    if (reservationsQuery.data && Array.isArray(reservationsQuery.data)) {
-      // Store these reservations in our cache by date
-      setCachedReservationsByDate(prev => ({
-        ...prev,
-        [formattedDate]: reservationsQuery.data
-      }));
-      console.log(`Cached reservations for ${formattedDate}`);
-    }
-  }, [reservationsQuery.data, formattedDate]);
-
   // Check if selectedDate is valid early
   useEffect(() => {
     // Step 4 console logs
@@ -361,9 +346,9 @@ export default function RoomList({ selectedDate }: RoomListProps) {
       return data;
     },
     select: transformReservations,
-    staleTime: 5 * 60 * 1000, // 5 minutes - data remains fresh longer
-    refetchOnMount: 'always', // Always refetch when component mounts
-    refetchOnWindowFocus: true, // Refetch when window gets focus
+    staleTime: 0, // Consider data always stale to force refresh when returning
+    refetchOnMount: true, // Always refetch when component mounts
+    refetchOnWindowFocus: true, // Refetch when window gets focus (returning from another tab/page)
   });
   
   // Handle errors from the query
@@ -569,18 +554,11 @@ export default function RoomList({ selectedDate }: RoomListProps) {
     };
   }, [reservationsQuery]);
 
-  // Replace the existing useEffect for clearing manually booked slots
+  // Add this useEffect to clear manually booked slots when date changes
   useEffect(() => {
-    // Only clear manually booked slots when actually changing to a different date,
-    // not when we're just refreshing the view of the same date
-    const currentDateStr = format(selectedDate, 'yyyy-MM-dd');
-    const prevDateRef = useRef(currentDateStr);
-
-    if (prevDateRef.current !== currentDateStr) {
-      console.log('Date actually changed from', prevDateRef.current, 'to', currentDateStr, 'clearing manually booked slots');
-      setManuallyBookedSlots(new Map());
-      prevDateRef.current = currentDateStr;
-    }
+    console.log('Date changed, clearing manually booked slots');
+    // Clear manually booked slots when date changes
+    setManuallyBookedSlots(new Map());
   }, [selectedDate]);
   
   // Create a direct room+timeslot mapping for each reservation
