@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { format, addHours } from "date-fns";
 import { AlertTriangle, Calendar, Clock, MapPin, Users } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Reservation, Room, Location } from "@shared/schema";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -296,6 +296,28 @@ function ReservationCard({
   onCancel?: () => void; 
   canCancel?: boolean;
 }) {
+  const [room, setRoom] = useState<Room | null>(null);
+  const [location, setLocation] = useState<Location | null>(null);
+
+  // Fetch room data when reservation changes
+  useEffect(() => {
+    const fetchRoomAndLocation = async () => {
+      try {
+        const roomRes = await fetch(`/api/rooms/${reservation.roomId}`);
+        const roomData = await roomRes.json();
+        setRoom(roomData);
+
+        const locationRes = await fetch(`/api/locations/${roomData.locationId}`);
+        const locationData = await locationRes.json();
+        setLocation(locationData);
+      } catch (err) {
+        console.error("Failed to load room or location", err);
+      }
+    };
+
+    fetchRoomAndLocation();
+  }, [reservation.roomId]);
+
   return (
     <Card className="overflow-hidden">
       <div className="p-6">
@@ -314,7 +336,7 @@ function ReservationCard({
               </Badge>
             </div>
           </div>
-          
+
           {canCancel && onCancel && (
             <Button 
               variant="destructive" 
@@ -326,27 +348,26 @@ function ReservationCard({
             </Button>
           )}
         </div>
-        
+
         <Separator className="my-4" />
-        
+
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Room</p>
-            <p className="font-medium">Room #{reservation.roomId}</p>
+            <p className="font-medium">{room ? room.name : `Room #${reservation.roomId}`}</p>
           </div>
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Capacity</p>
             <p className="font-medium flex items-center">
               <Users className="w-4 h-4 mr-1" />
-              {/* We would fetch room details in a real implementation */}
-              {"Unknown"}
+              {room ? room.capacity : "Unknown"}
             </p>
           </div>
           <div className="space-y-1">
             <p className="text-sm text-muted-foreground">Location</p>
             <p className="font-medium flex items-center">
               <MapPin className="w-4 h-4 mr-1" />
-              {"Unknown location"}
+              {location ? location.name : "Unknown location"}
             </p>
           </div>
         </div>

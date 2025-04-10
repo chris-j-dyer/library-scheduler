@@ -330,7 +330,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const userId = req.user!.id;
       const reservations = await storage.getReservationsByUser(userId);
-      res.status(200).json(reservations);
+
+      // Fetch all room IDs used in the reservations
+      const roomIds = Array.from(new Set(reservations.map(r => r.roomId)));
+      const allRooms = await Promise.all(roomIds.map(id => storage.getRoom(id)));
+
+      // Add room name to each reservation
+      const reservationsWithRoomNames = reservations.map(res => {
+        const room = allRooms.find(r => r?.id === res.roomId);
+        return {
+          ...res,
+          roomName: room?.name || `Room #${res.roomId}`,
+        };
+      });
+
+      res.status(200).json(reservationsWithRoomNames);
     } catch (err) {
       res.status(500).json({ error: "Internal server error" });
     }

@@ -8,6 +8,7 @@ import { User, insertUserSchema } from "@shared/schema";
 import { getQueryFn, apiRequest, queryClient } from "../lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { z } from "zod";
+import { useNavigate, useLocation } from "react-router-dom";
 
 // Create a schema for login data - just username and password
 const loginSchema = insertUserSchema.pick({
@@ -73,19 +74,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   // Track when the query completes (success or error)
+  const navigate = useNavigate();
+  const location = useLocation();
+
   useEffect(() => {
     if (!authQueryCompleted && (isSuccess || isError)) {
       console.log("Auth query completed with status - success:", isSuccess, "error:", isError);
       setAuthQueryCompleted(true);
-      
+
       // After a small delay, mark auth as initialized
-      // This gives time for other components to react to the auth state
       setTimeout(() => {
         console.log("Setting authInitialized to true");
         setAuthInitialized(true);
+
+        // 🚀 Redirect if user is logged in and on login/register page
+        if (user && ["/login", "/register"].includes(location.pathname)) {
+          navigate("/");
+        }
       }, 100);
     }
-  }, [isSuccess, isError, authQueryCompleted]);
+  }, [isSuccess, isError, authQueryCompleted, user, location.pathname, navigate]);
 
   const loginMutation = useMutation<SafeUser, Error, LoginData>({
     mutationFn: async (credentials) => {
@@ -108,6 +116,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           title: "Login successful",
           description: `Welcome back, ${user.name || user.username}!`,
         });
+
+        // 🚀 Bonus: Redirect after successful login
+        navigate("/");
       } catch (error) {
         console.error("Error in login mutation onSuccess callback:", error);
       }

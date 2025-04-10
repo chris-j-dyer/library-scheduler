@@ -40,7 +40,6 @@ export default function FilterControls() {
             <SelectContent>
               <SelectItem value="study-rooms">Study Rooms</SelectItem>
               <SelectItem value="meeting-rooms">Meeting Rooms</SelectItem>
-              <SelectItem value="computer-labs">Computer Labs</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -55,11 +54,10 @@ export default function FilterControls() {
               <SelectValue placeholder="All Spaces" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all-spaces">All Spaces</SelectItem>
-              <SelectItem value="1-2">1-2 People</SelectItem>
-              <SelectItem value="3-5">3-5 People</SelectItem>
-              <SelectItem value="6-10">6-10 People</SelectItem>
-              <SelectItem value="10+">10+ People</SelectItem>
+              <SelectItem value="all-spaces">All Spaces (not seats)</SelectItem>
+              <SelectItem value="1-4">Space for 1–4 people</SelectItem>
+              <SelectItem value="5-8">Space for 5–8 people</SelectItem>
+              <SelectItem value="9-12">Space for 9–12 people</SelectItem>
             </SelectContent>
           </Select>
         </div>
