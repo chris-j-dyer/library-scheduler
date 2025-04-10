@@ -27,8 +27,6 @@ export default function FilterControls({ capacityFilter, setCapacityFilter }: Fi
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="south-boulevard">South Boulevard</SelectItem>
-              <SelectItem value="university">University City</SelectItem>
-              <SelectItem value="mint-hill">Mint Hill</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -44,7 +42,6 @@ export default function FilterControls({ capacityFilter, setCapacityFilter }: Fi
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="study-rooms">Study Rooms</SelectItem>
-              <SelectItem value="meeting-rooms">Meeting Rooms</SelectItem>
             </SelectContent>
           </Select>
         </div>

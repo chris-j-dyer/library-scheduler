@@ -37,20 +37,6 @@ export default function Header() {
           </div>
           
           <div className="hidden md:flex items-center space-x-3">
-            <div className="relative">
-              <input 
-                type="text" 
-                placeholder="Search catalog..." 
-                className="pl-9 pr-4 py-2 rounded-md border border-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm w-48 lg:w-64"
-              />
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            </div>
-            
-            <Button variant="ghost" size="sm" className="text-gray-600 hover:text-blue-600 transition-colors px-3 py-2 rounded-md hover:bg-blue-50">
-              <Bell className="h-4 w-4 mr-1" />
-              <span>Notifications</span>
-            </Button>
-            
             {user ? (
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -62,9 +48,6 @@ export default function Header() {
                 <DropdownMenuContent align="end" className="w-56">
                   <DropdownMenuLabel>My Account</DropdownMenuLabel>
                   <DropdownMenuSeparator />
-                  <Link href="/profile">
-                    <DropdownMenuItem className="cursor-pointer">My Profile</DropdownMenuItem>
-                  </Link>
                   <Link href="/profile">
                     <DropdownMenuItem className="cursor-pointer">My Reservations</DropdownMenuItem>
                   </Link>
@@ -92,15 +75,6 @@ export default function Header() {
             <Menu className="h-5 w-5" />
           </Button>
         </div>
-        
-        {/* Breadcrumb navigation */}
-        <nav className="flex items-center text-sm mt-3">
-          <Link href="/" className="text-blue-600 hover:text-blue-800 font-medium">Home</Link>
-          <ChevronRight className="h-3 w-3 mx-2 text-gray-400" />
-          <Link href="/" className="text-blue-600 hover:text-blue-800">Room Reservations</Link>
-          <ChevronRight className="h-3 w-3 mx-2 text-gray-400" />
-          <span className="text-gray-600">South Boulevard Branch</span>
-        </nav>
         
         {/* Page title */}
         <div className="mt-5 pb-4">
