@@ -14,5 +14,9 @@ export default defineConfig({
     deps: {
       inline: ['react', 'react-dom'],
     },
+    // ✅ Add this block:
+    coverage: {
+      reporter: ['text', 'html'], // "text" for terminal output, "html" for browser view
+    },
   },
 });

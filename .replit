@@ -39,3 +39,21 @@ task = "packager.installForAll"
 task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
+
+[[workflows.workflow]]
+name = "Test"
+mode = "sequential"
+author = 41240981
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "./run-tests.sh"
+
+[[workflows.workflow]]
+name = "Test with coverage"
+mode = "sequential"
+author = 41240981
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "vitest run --coverage"
