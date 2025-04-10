@@ -207,9 +207,10 @@ const initialReservations: Reservation[] = [
 // Define props for RoomList component
 interface RoomListProps {
   selectedDate: Date;
+  capacityFilter: string;
 }
 
-export default function RoomList({ selectedDate }: RoomListProps) {
+  export default function RoomList({ selectedDate, capacityFilter }: RoomListProps) {
   const { toast } = useToast();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -379,6 +380,21 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   
   // Extract reservations from query result
   const reservations = reservationsQuery.data || [];
+
+  // Filter rooms based on selected capacity
+  const filteredRooms = roomsData.filter((room) => {
+    switch (capacityFilter) {
+      case "1-4":
+        return room.capacity <= 4;
+      case "5-8":
+        return room.capacity >= 5 && room.capacity <= 8;
+      case "9-12":
+        return room.capacity >= 9 && room.capacity <= 12;
+      case "all-spaces":
+      default:
+        return true;
+    }
+  });
   
   // Function to mark a reservation in the availability map
   const markReservationSlots = useCallback((reservation: any, force = false) => {
@@ -1036,7 +1052,7 @@ export default function RoomList({ selectedDate }: RoomListProps) {
   
   return (
     <>
-      {roomsData.map((room) => {
+      {filteredRooms.map((room) => {
         const schedule = getRoomSchedule(room.id);
         
         return (

@@ -7,6 +7,7 @@ import { format, addDays, isToday, isSameDay, startOfDay, addMonths, subDays } f
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
 import RoomList from "./RoomList";
+import FilterControls from "./FilterControls";
 
 export default function CalendarView() {
   const { toast } = useToast();
@@ -14,9 +15,8 @@ export default function CalendarView() {
   const [selectedDate, setSelectedDate] = useState<Date>(startOfDay(new Date()));
   const [calendarOpen, setCalendarOpen] = useState(false);
   const [showingWeek, setShowingWeek] = useState(true);
-  
   const weekEndDate = addDays(selectedDate, 6);
-  
+  const [capacityFilter, setCapacityFilter] = useState("all-spaces");
   const handlePrevious = () => {
     // The text in the button is reversed from the state:
     // When showingWeek=true, button says "Day", and we should move by 1 day
@@ -192,6 +192,12 @@ export default function CalendarView() {
       )}
       
       <div className="overflow-x-auto">
+        {/* ✅ Render the filter ABOVE the table, outside <tbody> */}
+        <FilterControls
+          capacityFilter={capacityFilter}
+          setCapacityFilter={setCapacityFilter}
+        />
+
         <table className="w-full border-collapse border border-gray-200 rounded-lg overflow-hidden">
           <thead>
             <tr>
@@ -217,7 +223,10 @@ export default function CalendarView() {
             </tr>
           </thead>
           <tbody>
-            <RoomList selectedDate={selectedDate} />
+            <RoomList
+              selectedDate={selectedDate}
+              capacityFilter={capacityFilter}
+            />
           </tbody>
         </table>
       </div>

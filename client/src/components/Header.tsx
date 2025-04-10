@@ -103,7 +103,7 @@ export default function Header() {
         </nav>
         
         {/* Page title */}
-        <div className="mt-5 border-b border-gray-100 pb-4">
+        <div className="mt-5 pb-4">
           <h2 className="text-2xl font-bold text-gray-800 flex items-center">
             <Calendar className="h-6 w-6 mr-2 text-blue-600" /> 
             Room Reservation

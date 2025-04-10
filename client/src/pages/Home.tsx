@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import Header from '@/components/Header';
-import FilterControls from '@/components/FilterControls';
 import Instructions from '@/components/Instructions';
 import CalendarView from '@/components/CalendarView';
 import { useAuth } from '@/hooks/use-auth';
@@ -15,7 +14,6 @@ export default function Home() {
       <div className="bg-gray-50 text-gray-800 min-h-screen">
         <Header />
         <main className="max-w-screen-xl mx-auto p-4">
-          <FilterControls />
           <Instructions />
           <CalendarView />
         </main>
