@@ -108,12 +108,17 @@ export default function CalendarView() {
     setShowingWeek(prev => !prev);
   };
   
-  const dateTitle = showingWeek 
-    ? `${format(selectedDate, "MMMM d, yyyy")} – ${format(weekEndDate, "MMMM d, yyyy")}`
-    : format(selectedDate, "EEEE, MMMM d, yyyy");
+  const dateTitle = showingWeek
+  ? format(selectedDate, "EEEE, MMMM d, yyyy")
+  : `${format(selectedDate, "MMMM d, yyyy")} – ${format(weekEndDate, "MMMM d, yyyy")}`;
   
   return (
     <div className="bg-white rounded-lg shadow-sm border border-gray-100 p-5 mb-8">
+      {/* ✅ Render the filter ABOVE the table, outside <tbody> */}
+      <FilterControls
+        capacityFilter={capacityFilter}
+        setCapacityFilter={setCapacityFilter}
+      />
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-6">
         <h2 className="text-xl font-semibold text-gray-800 mb-2 md:mb-0">
           {dateTitle}
@@ -192,12 +197,6 @@ export default function CalendarView() {
       )}
       
       <div className="overflow-x-auto">
-        {/* ✅ Render the filter ABOVE the table, outside <tbody> */}
-        <FilterControls
-          capacityFilter={capacityFilter}
-          setCapacityFilter={setCapacityFilter}
-        />
-
         <table className="w-full border-collapse border border-gray-200 rounded-lg overflow-hidden">
           <thead>
             <tr>
@@ -229,6 +228,16 @@ export default function CalendarView() {
             />
           </tbody>
         </table>
+        <div className="mt-4 flex flex-wrap gap-3 justify-end items-center text-sm">
+          <div className="flex items-center">
+            <div className="w-4 h-4 bg-[#00a2ff] rounded-sm mr-2"></div>
+            <span className="text-gray-600">Available</span>
+          </div>
+          <div className="flex items-center">
+            <div className="w-4 h-4 bg-[#e0e0e0] rounded-sm mr-2"></div>
+            <span className="text-gray-600">Occupied</span>
+          </div>
+        </div>
       </div>
     </div>
   );

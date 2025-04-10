@@ -67,12 +67,6 @@ export default function FilterControls({ capacityFilter, setCapacityFilter }: Fi
           </Select>
         </div>
       </div>
-      
-      <div className="mt-5 flex justify-end">
-        <Button className="bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-md transition-colors">
-          Apply Filters
-        </Button>
-      </div>
     </div>
   );
 }

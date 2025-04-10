@@ -42,17 +42,6 @@ export default function Instructions() {
           <p className="text-sm text-gray-600">Study rooms may only be booked online or in-person at the branch on the day of your visit. For assistance, contact the branch at 704-416-6400.</p>
         </div>
       </div>
-      
-      <div className="mt-4 flex flex-wrap gap-3 justify-end items-center text-sm">
-        <div className="flex items-center">
-          <div className="w-4 h-4 bg-[#00a2ff] rounded-sm mr-2"></div>
-          <span className="text-gray-600">Available</span>
-        </div>
-        <div className="flex items-center">
-          <div className="w-4 h-4 bg-[#e0e0e0] rounded-sm mr-2"></div>
-          <span className="text-gray-600">Occupied</span>
-        </div>
-      </div>
     </div>
   );
 }
