@@ -22,6 +22,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle
 } from "@/components/ui/alert-dialog";
+import { DateTime } from "luxon";
 
 export default function ProfilePage() {
   const { user } = useAuth();
@@ -308,8 +309,8 @@ function ReservationCard({
               </Badge>
               <Badge variant="outline" className="flex items-center gap-1">
                 <Clock className="w-3 h-3" />
-                {/* Add 4 hours to compensate for timezone issue */}
-                {format(addHours(new Date(reservation.startTime), 4), "h:mm a")} - {format(addHours(new Date(reservation.endTime), 4), "h:mm a")}
+                {DateTime.fromISO(reservation.startTime, { zone: "utc" }).setZone("America/New_York").toFormat("h:mm a")} - 
+                {DateTime.fromISO(reservation.endTime, { zone: "utc" }).setZone("America/New_York").toFormat("h:mm a")}
               </Badge>
             </div>
           </div>
