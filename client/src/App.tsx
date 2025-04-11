@@ -6,6 +6,7 @@ import Home from "@/pages/Home";
 import NotFound from "@/pages/not-found";
 import AuthPage from "@/pages/auth-page";
 import ProfilePage from "@/pages/profile-page";
+import PaymentPage from "@/pages/payment-page";
 import { AuthProvider } from "@/hooks/use-auth";
 import { ProtectedRoute } from "@/lib/protected-route";
 import ErrorBoundary from "@/components/ErrorBoundary";
@@ -18,6 +19,7 @@ function Router() {
     <Switch>
       <ProtectedRoute path="/" component={Home} />
       <ProtectedRoute path="/profile" component={ProfilePage} />
+      <ProtectedRoute path="/payment/:reservationId" component={PaymentPage} />
       <Route path="/auth">
         <ErrorBoundary>
           <AuthPage />
