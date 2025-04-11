@@ -107,11 +107,11 @@ function CheckoutForm({ clientSecret, reservationId, amount, returnToPath = '/' 
     setIsLoading(true);
 
     // Create a payment method and confirm the payment
-    const { error } = await stripe.confirmPayment({
+    const { error, paymentIntent } = await stripe.confirmPayment({
       elements,
       confirmParams: {
         // Make sure to change this to your payment completion page
-        return_url: window.location.href,
+        return_url: `${window.location.origin}/reservations`,
       },
       redirect: 'if_required',
     });
@@ -121,6 +121,45 @@ function CheckoutForm({ clientSecret, reservationId, amount, returnToPath = '/' 
         title: "Payment failed",
         description: error.message || "An error occurred during payment",
         variant: "destructive"
+      });
+      setIsLoading(false);
+      return;
+    }
+
+    // Payment succeeded, update the reservation status
+    if (paymentIntent && paymentIntent.status === 'succeeded') {
+      try {
+        // Call our API to update the reservation status
+        await fetch(`/api/reservations/${reservationId}/payment-success`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ paymentIntentId: paymentIntent.id }),
+        });
+
+        // Show success message
+        toast({
+          title: "Payment successful!",
+          description: "Your reservation has been confirmed.",
+        });
+
+        // Redirect to the reservations page
+        setTimeout(() => {
+          window.location.href = returnToPath || '/reservations';
+        }, 1500);
+      } catch (apiError) {
+        console.error('Error updating reservation status:', apiError);
+        toast({
+          title: "Payment recorded",
+          description: "Your payment was successful, but we couldn't update your reservation status. Please contact support.",
+          variant: "warning"
+        });
+      }
+    } else {
+      toast({
+        title: "Payment processing",
+        description: "Your payment is being processed. We'll email you once it's confirmed.",
       });
     }
 
