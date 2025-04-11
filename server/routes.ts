@@ -662,6 +662,130 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.status(200).json({ received: true });
   });
   
+  // TEST ENDPOINT: Create a test reservation and payment intent (for testing only)
+  app.post("/api/test-payment-flow", async (req, res) => {
+    try {
+      console.log("Testing payment flow");
+      
+      // 1. Create a test reservation with pending_payment status
+      const now = new Date();
+      const startTime = new Date(now.getTime() + 60 * 60 * 1000); // 1 hour from now
+      const endTime = new Date(now.getTime() + 3 * 60 * 60 * 1000); // 3 hours from now
+      
+      const reservationData = {
+        roomId: 1, // Group Study Room
+        guestName: "Test User",
+        guestEmail: "test@example.com",
+        reservationDate: now.toISOString().split('T')[0], // Format as YYYY-MM-DD
+        startTime,
+        endTime,
+        purpose: "Test Reservation",
+        status: "pending_payment",
+        paymentStatus: "pending",
+        // Calculate price: $5 per hour for 2 hours = $10 = 1000 cents
+        priceInCents: 1000
+      };
+      
+      // Create the reservation
+      const reservation = await storage.createReservation(reservationData);
+      console.log("Created test reservation:", reservation);
+      
+      // 2. Create a payment intent
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: 1000, // $10.00
+        currency: 'usd',
+        metadata: {
+          reservationId: reservation.id.toString(),
+          roomId: reservation.roomId.toString(),
+          startTime: reservation.startTime.toISOString(),
+          endTime: reservation.endTime.toISOString(),
+        }
+      });
+      
+      console.log("Created Stripe payment intent:", paymentIntent.id);
+      
+      // 3. Update the reservation with the payment intent ID
+      const updatedReservation = await storage.updateReservation(
+        reservation.id, 
+        {
+          stripePaymentIntentId: paymentIntent.id
+        }
+      );
+      
+      // 4. Return all the test data
+      res.status(200).json({
+        success: true,
+        message: "Test payment flow initiated successfully",
+        reservation: updatedReservation,
+        paymentIntent: {
+          id: paymentIntent.id,
+          clientSecret: paymentIntent.client_secret,
+          amount: paymentIntent.amount,
+          currency: paymentIntent.currency,
+          status: paymentIntent.status
+        }
+      });
+    } catch (err) {
+      console.error("Error in test payment flow:", err);
+      res.status(500).json({ 
+        error: "Test payment flow failed",
+        details: err instanceof Error ? err.message : "Unknown error" 
+      });
+    }
+  });
+  
+  // TEST ENDPOINT: Simulate a successful payment (for testing only)
+  app.post("/api/test-payment-success", async (req, res) => {
+    try {
+      const { reservationId, paymentIntentId } = req.body;
+      
+      if (!reservationId || !paymentIntentId) {
+        return res.status(400).json({ 
+          error: "Missing required parameters: reservationId and paymentIntentId" 
+        });
+      }
+      
+      const reservation = await storage.getReservation(parseInt(reservationId));
+      
+      if (!reservation) {
+        return res.status(404).json({ error: "Reservation not found" });
+      }
+      
+      // Update reservation status to confirmed
+      const updatedReservation = await storage.updateReservation(
+        reservation.id, 
+        {
+          status: "confirmed",
+          paymentStatus: "completed"
+        }
+      );
+      
+      console.log("Test payment success - Updated reservation:", updatedReservation);
+      
+      // Broadcast to WebSocket clients
+      wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            type: 'updated_reservation',
+            data: updatedReservation
+          }));
+        }
+      });
+      
+      res.status(200).json({
+        success: true,
+        message: "Test payment success simulated",
+        reservation: updatedReservation
+      });
+    } catch (err) {
+      console.error("Error in test payment success:", err);
+      res.status(500).json({ 
+        error: "Test payment success failed",
+        details: err instanceof Error ? err.message : "Unknown error" 
+      });
+    }
+  });
+  
   // Update reservation after successful payment
   app.post("/api/reservations/:id/payment-success", isAuthenticated, async (req, res) => {
     try {
