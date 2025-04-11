@@ -432,18 +432,22 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Create reservation
       const reservation = await storage.createReservation(reservationData);
       
-      // Broadcast to WebSocket clients
-      wss.clients.forEach(client => {
-        if (client.readyState === WebSocket.OPEN) {
-          client.send(JSON.stringify({
-            type: 'new_reservation',
-            data: reservation
-          }));
-        }
-      });
-      
-      // Log that we sent the WebSocket message
-      console.log('WebSocket broadcast: new reservation created');
+      // Only broadcast confirmed reservations to WebSocket clients
+      if (reservation.status === 'confirmed') {
+        wss.clients.forEach(client => {
+          if (client.readyState === WebSocket.OPEN) {
+            client.send(JSON.stringify({
+              type: 'new_reservation',
+              data: reservation
+            }));
+          }
+        });
+        
+        // Log that we sent the WebSocket message
+        console.log('WebSocket broadcast: new confirmed reservation');
+      } else {
+        console.log(`Skipping WebSocket broadcast for reservation #${reservation.id} with status ${reservation.status}`);
+      }
       
       res.status(201).json(reservation);
     } catch (err) {

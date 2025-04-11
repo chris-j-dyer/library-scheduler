@@ -409,6 +409,12 @@ interface RoomListProps {
       return false;
     }
     
+    // Skip if the reservation is not confirmed (pending_payment, etc)
+    if (reservation.status !== 'confirmed') {
+      console.log(`Skipping marking slots for reservation #${reservation.id} because status is ${reservation.status}`);
+      return false;
+    }
+    
     // Get hours for this reservation
     const startHour = startTime.getHours();
     const endHour = endTime.getHours();
@@ -499,19 +505,24 @@ interface RoomListProps {
               queryKey: ['/api/reservations/by-date', formattedDate] 
             });
             
-            // Mark this reservation's slots
-            const slotsChanged = markReservationSlots(reservation);
-            
-            // Show toast notification
-            toast({
-              title: "New Reservation",
-              description: `Room ${reservation.roomId} has been reserved`,
-            });
-            
-            // Force a refresh if slots were changed
-            if (slotsChanged) {
-              // Force component to re-render immediately
-              setLocalDate(new Date(localDate));
+            // Only mark slots and show toast for confirmed reservations
+            if (reservation.status === 'confirmed') {
+              // Mark this reservation's slots
+              const slotsChanged = markReservationSlots(reservation);
+              
+              // Show toast notification
+              toast({
+                title: "New Reservation",
+                description: `Room ${reservation.roomId} has been reserved`,
+              });
+              
+              // Force a refresh if slots were changed
+              if (slotsChanged) {
+                // Force component to re-render immediately
+                setLocalDate(new Date(localDate));
+              }
+            } else {
+              console.log(`Not showing notification for reservation #${reservation.id} with status ${reservation.status}`);
             }
           }
         } else if (message.type === 'cancelled_reservation') {
@@ -625,11 +636,17 @@ interface RoomListProps {
     // Mark booked slots as unavailable
     console.log(`Marking reserved slots from ${reservations.length} reservations`);
     for (const reservation of reservations) {
-      if (reservation.status === 'cancelled') {
-        console.log(`⏭ Skipping cancelled reservation #${reservation.id}`);
+      if (reservation.status === 'cancelled' || reservation.status === 'pending_payment') {
+        console.log(`⏭ Skipping ${reservation.status} reservation #${reservation.id}`);
         continue;
       }
 
+      // Only mark confirmed reservations as unavailable
+      if (reservation.status !== 'confirmed') {
+        console.log(`⏭ Skipping reservation #${reservation.id} with status ${reservation.status}`);
+        continue;
+      }
+      
       const resDate = reservation.date || new Date(reservation.reservationDate);
       if (!isSameDay(resDate, selectedDate)) {
         console.log(`⏭ Skipping reservation #${reservation.id} — date mismatch:`, format(resDate, 'yyyy-MM-dd'), 'vs', format(selectedDate, 'yyyy-MM-dd'));
