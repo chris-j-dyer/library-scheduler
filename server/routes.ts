@@ -352,7 +352,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
   
   // Create new reservation
-  app.post("/api/reservations", async (req, res) => {
+  app.post("/api/reservations", isAuthenticated, async (req, res) => {
     try {
       // Log request body for debugging
       console.log("Reservation request body:", JSON.stringify(req.body));

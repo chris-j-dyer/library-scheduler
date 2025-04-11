@@ -225,7 +225,7 @@ interface RoomListProps {
   const [userEmail, setUserEmail] = useState(user ? (user.email || "") : "");
   const [purpose, setPurpose] = useState("");
   const [localDate, setLocalDate] = useState(new Date(selectedDate));
-  const [navigate, setLocation] = useLocation();
+  const [, setLocation] = useLocation(); // The first element is current path, second is navigate function
 
   // Check if selectedDate is valid early
   useEffect(() => {
@@ -898,7 +898,7 @@ interface RoomListProps {
       setIsModalOpen(false);
       
       // Redirect to payment page with the reservation ID
-      navigate(`/payment/${newReservation.id}`);
+      setLocation(`/payment/${newReservation.id}`);
 
     } catch (error) {
       console.error('Error creating reservation:', error);
