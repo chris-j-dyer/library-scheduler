@@ -5,10 +5,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { format, setHours, addHours, isSameDay, parseISO } from "date-fns";
+import { format, setHours, addHours, isSameDay, parseISO, differenceInHours } from "date-fns";
 import { Room as SchemaRoom, Reservation as SchemaReservation } from "@shared/schema";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { DateTime } from "luxon";
+import { useLocation } from "wouter";
 
 // Utility function to safely format dates
 const safeFormat = (date: Date | string | null | undefined, formatString: string): string => {
@@ -224,6 +225,7 @@ interface RoomListProps {
   const [userEmail, setUserEmail] = useState(user ? (user.email || "") : "");
   const [purpose, setPurpose] = useState("");
   const [localDate, setLocalDate] = useState(new Date(selectedDate));
+  const [navigate, setLocation] = useLocation();
 
   // Check if selectedDate is valid early
   useEffect(() => {
@@ -818,7 +820,9 @@ interface RoomListProps {
         purpose: purpose || "Study session",
         guestName: userName,
         guestEmail: userEmail,
-        status: "confirmed",
+        status: "pending_payment", // Set initial status to pending payment
+        // Calculate price in cents based on duration: $5 per hour
+        priceInCents: selectedDuration * 500, // $5 per hour in cents
         confirmationCode: `LIB-${Math.floor(100000 + Math.random() * 900000)}`
       };
 
@@ -890,9 +894,11 @@ interface RoomListProps {
       // Force a rerender to update the UI immediately
       setLocalDate(new Date(selectedDate));
 
-      // Close booking modal and show confirmation
+      // Close booking modal
       setIsModalOpen(false);
-      setIsConfirmationOpen(true);
+      
+      // Redirect to payment page with the reservation ID
+      navigate(`/payment/${newReservation.id}`);
 
     } catch (error) {
       console.error('Error creating reservation:', error);
