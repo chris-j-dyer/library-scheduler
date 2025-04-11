@@ -12,6 +12,7 @@ import { ZodError, z } from "zod";
 import { format } from "date-fns";
 import { setupAuth } from "./auth";
 import { DateTime } from "luxon";
+import Stripe from "stripe";
 
 // Extend Express Request to include session
 declare module "express-serve-static-core" {
@@ -364,6 +365,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         reservationData.userId = req.user.id;
       }
       
+      // Set status to pending_payment by default
+      reservationData.status = "pending_payment";
+      
+      // Calculate price based on duration
+      if (reservationData.startTime && reservationData.endTime) {
+        let startTime = reservationData.startTime;
+        let endTime = reservationData.endTime;
+        
+        if (typeof startTime === 'string') {
+          startTime = DateTime.fromISO(startTime, { zone: 'America/New_York' }).toJSDate();
+        }
+        
+        if (typeof endTime === 'string') {
+          endTime = DateTime.fromISO(endTime, { zone: 'America/New_York' }).toJSDate();
+        }
+        
+        // Calculate duration and price
+        const durationMs = endTime.getTime() - startTime.getTime();
+        const durationHours = Math.ceil(durationMs / (1000 * 60 * 60)); // Round up to nearest hour
+        const priceInCents = durationHours * 500; // $5 per hour = 500 cents
+        
+        // Add price to reservation data
+        reservationData.priceInCents = priceInCents;
+        reservationData.paymentStatus = "pending";
+        
+        console.log(`Setting price for new reservation: $${priceInCents/100} (${durationHours} hours)`);
+      }
+      
       // The Zod schema validation is handled in the storage layer now
       
       // Convert to the appropriate format if needed
@@ -394,6 +423,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         endTime: reservationData.endTime,
         purpose: reservationData.purpose,
         status: reservationData.status,
+        priceInCents: reservationData.priceInCents,
+        paymentStatus: reservationData.paymentStatus,
         confirmationCode: reservationData.confirmationCode
       });
       
@@ -492,6 +523,185 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       res.status(200).json(cancelledReservation);
     } catch (err) {
+      res.status(500).json({ error: "Internal server error" });
+    }
+  });
+
+  // Initialize Stripe with our secret key
+  if (!process.env.STRIPE_SECRET_KEY) {
+    console.error("Missing required environment variable: STRIPE_SECRET_KEY");
+  }
+  const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || '');
+
+  // ---- Payment Routes ----
+  
+  // Helper function to calculate price for a reservation in cents
+  const calculateReservationPrice = (startTime: Date, endTime: Date): number => {
+    // $5 per hour, charged in full hour increments
+    const durationMs = endTime.getTime() - startTime.getTime();
+    const durationHours = Math.ceil(durationMs / (1000 * 60 * 60)); // Round up to the nearest hour
+    return durationHours * 500; // $5.00 = 500 cents per hour
+  };
+
+  // Create a payment intent for a reservation
+  app.post("/api/create-payment-intent", isAuthenticated, async (req, res) => {
+    try {
+      console.log("Create payment intent request:", req.body);
+      
+      // Validate request body
+      const { reservationId } = req.body;
+      
+      if (!reservationId) {
+        return res.status(400).json({ 
+          error: "Missing required parameter: reservationId" 
+        });
+      }
+
+      // Get the reservation
+      const reservation = await storage.getReservation(parseInt(reservationId));
+      if (!reservation) {
+        return res.status(404).json({ error: "Reservation not found" });
+      }
+
+      // Check if user owns this reservation or is admin
+      if (!req.user?.isAdmin && reservation.userId !== req.user?.id) {
+        return res.status(403).json({ error: "Forbidden" });
+      }
+
+      // Check if reservation already has a payment intent
+      if (reservation.stripePaymentIntentId) {
+        try {
+          // Get the existing payment intent to check its status
+          const existingIntent = await stripe.paymentIntents.retrieve(
+            reservation.stripePaymentIntentId
+          );
+          
+          // If payment intent is already successful or we're in the process of payment
+          if (['succeeded', 'processing', 'requires_capture'].includes(existingIntent.status)) {
+            return res.status(400).json({ 
+              error: "Payment for this reservation has already been processed" 
+            });
+          }
+          
+          // If it's an old payment intent that wasn't completed, we can cancel it
+          await stripe.paymentIntents.cancel(reservation.stripePaymentIntentId);
+        } catch (err) {
+          console.error("Error checking existing payment intent:", err);
+          // Continue with creating a new one if we can't retrieve the old one
+        }
+      }
+
+      // Calculate price based on reservation duration
+      const amountInCents = calculateReservationPrice(
+        reservation.startTime, 
+        reservation.endTime
+      );
+      
+      console.log(`Calculated price for reservation #${reservationId}: $${amountInCents/100}`);
+
+      // Create the payment intent
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: amountInCents,
+        currency: 'usd',
+        metadata: {
+          reservationId: reservation.id.toString(),
+          roomId: reservation.roomId.toString(),
+          startTime: reservation.startTime.toISOString(),
+          endTime: reservation.endTime.toISOString(),
+        },
+        // Add application fee if needed
+        // application_fee_amount: Math.round(amountInCents * 0.05), // 5% fee
+      });
+
+      // Update the reservation with the payment intent ID and price
+      const updatedReservation = await storage.updateReservation(
+        reservation.id, 
+        {
+          stripePaymentIntentId: paymentIntent.id,
+          priceInCents: amountInCents,
+          paymentStatus: "pending",
+          status: "pending_payment"
+        }
+      );
+
+      // Broadcast the updated reservation to WebSocket clients
+      wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            type: 'updated_reservation',
+            data: updatedReservation
+          }));
+        }
+      });
+
+      // Return the client secret to the frontend
+      res.status(200).json({
+        clientSecret: paymentIntent.client_secret,
+        amountInCents,
+        reservation: updatedReservation
+      });
+      
+    } catch (err) {
+      console.error("Error creating payment intent:", err);
+      res.status(500).json({ 
+        error: "Failed to create payment intent",
+        details: err instanceof Error ? err.message : "Unknown error" 
+      });
+    }
+  });
+
+  // Webhook to handle successful Stripe payments (we would implement this in production)
+  app.post("/api/webhook", async (req, res) => {
+    // This is a placeholder for a full Stripe webhook implementation
+    // In a production app, you would:
+    // 1. Verify the webhook signature
+    // 2. Handle various event types (payment_intent.succeeded, etc.)
+    // 3. Update the reservation status when payment is complete
+    
+    // For now, we'll just acknowledge the webhook
+    res.status(200).json({ received: true });
+  });
+  
+  // Update reservation after successful payment
+  app.post("/api/reservations/:id/payment-success", isAuthenticated, async (req, res) => {
+    try {
+      const reservationId = parseInt(req.params.id);
+      const { paymentIntentId } = req.body;
+      
+      if (!paymentIntentId) {
+        return res.status(400).json({ error: "Missing paymentIntentId" });
+      }
+      
+      const reservation = await storage.getReservation(reservationId);
+      
+      if (!reservation) {
+        return res.status(404).json({ error: "Reservation not found" });
+      }
+      
+      // Verify this is the correct payment intent
+      if (reservation.stripePaymentIntentId !== paymentIntentId) {
+        return res.status(400).json({ error: "Payment intent ID does not match" });
+      }
+      
+      // Update reservation status to confirmed
+      const updatedReservation = await storage.updateReservation(reservationId, {
+        status: "confirmed",
+        paymentStatus: "completed"
+      });
+      
+      // Broadcast to WebSocket clients
+      wss.clients.forEach(client => {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(JSON.stringify({
+            type: 'updated_reservation',
+            data: updatedReservation
+          }));
+        }
+      });
+      
+      res.status(200).json(updatedReservation);
+    } catch (err) {
+      console.error("Error handling payment success:", err);
       res.status(500).json({ error: "Internal server error" });
     }
   });
