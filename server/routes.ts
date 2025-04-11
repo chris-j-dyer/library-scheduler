@@ -829,6 +829,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Internal server error" });
     }
   });
+  
+  // Get payment intent client secret for an existing payment intent
+  app.get("/api/payment-intent/:paymentIntentId", isAuthenticated, async (req, res) => {
+    try {
+      const { paymentIntentId } = req.params;
+      
+      if (!paymentIntentId) {
+        return res.status(400).json({ error: "Missing paymentIntentId" });
+      }
+      
+      console.log("Getting payment intent:", paymentIntentId);
+      
+      // Verify the payment intent belongs to a reservation owned by this user
+      // Note: req.user is guaranteed to exist because of isAuthenticated middleware
+      const userId = req.user!.id;
+      const userReservations = await storage.getReservationsByUser(userId);
+      const matchingReservation = userReservations.find(
+        r => r.stripePaymentIntentId === paymentIntentId
+      );
+      
+      if (!matchingReservation) {
+        return res.status(403).json({ 
+          error: "You do not have permission to access this payment intent" 
+        });
+      }
+      
+      // Retrieve the payment intent from Stripe
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      
+      console.log("Retrieved payment intent:", paymentIntent.id, "Status:", paymentIntent.status);
+      
+      res.status(200).json({
+        clientSecret: paymentIntent.client_secret,
+        amount: paymentIntent.amount,
+        status: paymentIntent.status
+      });
+    } catch (err) {
+      console.error("Error retrieving payment intent:", err);
+      res.status(500).json({ error: "Failed to retrieve payment intent" });
+    }
+  });
 
   return httpServer;
 }

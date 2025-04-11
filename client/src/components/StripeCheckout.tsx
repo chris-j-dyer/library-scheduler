@@ -5,7 +5,7 @@ import { loadStripe } from '@stripe/stripe-js';
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
-import { useNavigate } from "wouter";
+import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 
 // Make sure to call loadStripe outside of a component's render to avoid
@@ -25,7 +25,7 @@ function CheckoutForm({ clientSecret, reservationId, amount, returnToPath = '/' 
   const elements = useElements();
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
-  const navigate = useNavigate();
+  const [, navigate] = useLocation();
 
   useEffect(() => {
     if (!stripe) {
