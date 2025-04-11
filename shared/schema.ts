@@ -51,9 +51,13 @@ export const reservations = pgTable("reservations", {
   startTime: timestamp("start_time").notNull(),
   endTime: timestamp("end_time").notNull(),
   purpose: text("purpose"),
-  status: text("status").default("confirmed"),  // confirmed, cancelled, pending
+  status: text("status").default("pending_payment"),  // confirmed, cancelled, pending_payment, payment_failed
   confirmationCode: text("confirmation_code"),
   notes: text("notes"),
+  // Payment related fields
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  paymentStatus: text("payment_status").default("pending"), // pending, completed, failed, refunded
+  priceInCents: integer("price_in_cents"), // Store amount in cents (e.g., $5.00 = 500)
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at")
 });
@@ -101,7 +105,11 @@ export const insertReservationSchema = createInsertSchema(reservations).pick({
   purpose: true,
   status: true,
   confirmationCode: true,
-  notes: true
+  notes: true,
+  // Include payment fields in the insert schema
+  stripePaymentIntentId: true,
+  paymentStatus: true,
+  priceInCents: true
 });
 
 // Export types
