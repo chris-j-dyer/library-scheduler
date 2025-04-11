@@ -153,7 +153,7 @@ function CheckoutForm({ clientSecret, reservationId, amount, returnToPath = '/' 
         toast({
           title: "Payment recorded",
           description: "Your payment was successful, but we couldn't update your reservation status. Please contact support.",
-          variant: "warning"
+          variant: "destructive"
         });
       }
     } else {

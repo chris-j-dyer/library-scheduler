@@ -599,11 +599,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       console.log(`Calculated price for reservation #${reservationId}: $${amountInCents/100}`);
 
-      // Create the payment intent with proper payment method types
+      // Create the payment intent with automatic payment methods
       const paymentIntent = await stripe.paymentIntents.create({
         amount: amountInCents,
         currency: 'usd',
-        payment_method_types: ['card'],  // Explicitly specify payment method types
         automatic_payment_methods: {
           enabled: true,  // Enable automatic payment methods for broader compatibility
         },
@@ -694,11 +693,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const reservation = await storage.createReservation(reservationData);
       console.log("Created test reservation:", reservation);
       
-      // 2. Create a payment intent with the correct payment methods configuration
+      // 2. Create a payment intent with automatic payment methods 
       const paymentIntent = await stripe.paymentIntents.create({
         amount: 1000, // $10.00
         currency: 'usd',
-        payment_method_types: ['card'],  // Explicitly specify payment method types
         automatic_payment_methods: {
           enabled: true,  // Enable automatic payment methods for broader compatibility
         },
